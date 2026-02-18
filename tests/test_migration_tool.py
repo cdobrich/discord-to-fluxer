@@ -67,15 +67,15 @@ class TestMigrationTool(unittest.IsolatedAsyncioTestCase):
         # Ensure ID is a string as per parsed_channels in DiscordClient
         self.assertEqual(result[0]["id"], "123") 
 
-    @patch("fluxer_api.client.Client.fetch_guild", new_callable=AsyncMock)
-    @patch("fluxer_api.http.HTTPClient._ensure_session", new_callable=AsyncMock)
+    @patch("fluxer.client.Client.fetch_guild", new_callable=AsyncMock)
+    @patch("fluxer.http.HTTPClient._ensure_session", new_callable=AsyncMock)
     async def test_fluxer_client_connection(self, mock_ensure_session, mock_fetch_guild):
         mock_fetch_guild.return_value = MagicMock(id="abc123", name="TestServer")
         client = FluxerClient(token="FAKE_FLUXER_TOKEN", fluxer_guild_id="abc123")
         await client.start()
         self.assertEqual(client.fluxer_guild.id, "abc123")
 
-    @patch("fluxer_api.http.HTTPClient.get_guild_channels", new_callable=AsyncMock)
+    @patch("fluxer.http.HTTPClient.get_guild_channels", new_callable=AsyncMock)
     async def test_fluxer_fetch_channels(self, mock_get_channels):
         mock_get_channels.return_value = [
             {"id": "chan1", "name": "chat", "type": ChannelType.GUILD_TEXT.value, "parent_id": None}
@@ -83,14 +83,14 @@ class TestMigrationTool(unittest.IsolatedAsyncioTestCase):
 
         client = FluxerClient(token="FAKE", fluxer_guild_id="abc")
         # Initialize http client manually as start() is not called
-        from fluxer_api.http import HTTPClient
+        from fluxer.http import HTTPClient
         client.fluxer_bot._http = HTTPClient("FAKE")
         
         result = await client.get_guild_channels("abc")
         self.assertEqual(result[0]['name'], "chat")
         self.assertEqual(result[0]['type'], "text")
 
-    @patch("fluxer_api.http.HTTPClient.create_guild_channel", new_callable=AsyncMock)
+    @patch("fluxer.http.HTTPClient.create_guild_channel", new_callable=AsyncMock)
     async def test_fluxer_create_channel(self, mock_create):
         mock_create.return_value = {
             "id": "chan123",
@@ -103,7 +103,7 @@ class TestMigrationTool(unittest.IsolatedAsyncioTestCase):
         client.fluxer_guild = MagicMock()
         client.fluxer_guild.id = "abc"
         # Initialize http client
-        from fluxer_api.http import HTTPClient
+        from fluxer.http import HTTPClient
         client.fluxer_bot._http = HTTPClient("FAKE")
 
         test_discord_channel = {

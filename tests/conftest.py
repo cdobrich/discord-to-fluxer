@@ -60,7 +60,7 @@ def mock_token_files(tmp_path):
 # Fixture for an AppConfig instance with mocked token reading
 @pytest.fixture
 def mock_app_config(mock_config_content, mock_token_files):
-    with patch('discord_to_fluxer.read_token_from_file', side_effect=lambda f: {
+    with patch('config.read_token_from_file', side_effect=lambda f: {
         mock_token_files['discord']: "fake_discord_token",
         mock_token_files['fluxer']: "fake_fluxer_token"
     }.get(f, None)):
@@ -153,9 +153,9 @@ def mock_state_manager(tmp_path):
 @pytest.fixture
 def mock_migration_tool(mock_app_config, mock_discord_client, mock_fluxer_client, mock_state_manager):
     # Patch the actual classes with our mock instances
-    with patch('discord_to_fluxer.DiscordClient', return_value=mock_discord_client), \
-         patch('discord_to_fluxer.FluxerClient', return_value=mock_fluxer_client), \
-         patch('discord_to_fluxer.StateManager', return_value=mock_state_manager):
+    with patch('discord_client.DiscordClient', return_value=mock_discord_client), \
+         patch('fluxer_client.FluxerClient', return_value=mock_fluxer_client), \
+         patch('state_manager.StateManager', return_value=mock_state_manager):
         
         # Instantiate MigrationTool, it will now use the patched clients/manager
         tool = MigrationTool(mock_app_config)

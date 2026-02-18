@@ -20,7 +20,7 @@ class TestExtendedMigrationTool(unittest.IsolatedAsyncioTestCase):
     def test_store_and_get_last_migrated_message(self):
         db = StateManager(":memory:")
         db.connect()
-        db.store_message_mapping("msg1", "fmsg1", "chan1", "fchan1")
+        db.store_message_mapping("msg1", "fmsg1", "chan1", "fchan1", "content", [])
         last_id = db.get_last_migrated_message_id("chan1")
         self.assertEqual(last_id, "msg1")
         db.close()
@@ -55,14 +55,14 @@ class TestExtendedMigrationTool(unittest.IsolatedAsyncioTestCase):
         mock_send.assert_not_awaited()
 
 
-    @patch("discord_to_fluxer.MigrationTool.setup_server_structure", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.MigrationTool.migrate_messages", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.MigrationTool.migrate_roles", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.MigrationTool.migrate_members", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.DiscordClient.start", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.FluxerClient.start", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.DiscordClient.close", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.FluxerClient.close", new_callable=AsyncMock)
+    @patch("migration_tool.MigrationTool.setup_server_structure", new_callable=AsyncMock)
+    @patch("migration_tool.MigrationTool.migrate_messages", new_callable=AsyncMock)
+    @patch("migration_tool.MigrationTool.migrate_roles", new_callable=AsyncMock)
+    @patch("migration_tool.MigrationTool.migrate_members", new_callable=AsyncMock)
+    @patch("discord_client.DiscordClient.start", new_callable=AsyncMock)
+    @patch("fluxer_client.FluxerClient.start", new_callable=AsyncMock)
+    @patch("discord_client.DiscordClient.close", new_callable=AsyncMock)
+    @patch("fluxer_client.FluxerClient.close", new_callable=AsyncMock)
     async def test_full_migration_runs_all_stages(self, mock_fluxer_close, mock_discord_close,
                                                   mock_fluxer_start, mock_discord_start,
                                                   mock_migrate_members, mock_migrate_roles,

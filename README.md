@@ -2,12 +2,8 @@
 
 Migrate from Discord Chat to [Fluxer](https://github.com/fluxerapp/fluxer) chat.
 
-You will need to create two bots (one for Discord and one for Fluxer), in order to run this program.
+You will need to create two bots (one for Discord and one for Fluxer), in order to run this program. This will require saving some info to files (guided steps below), running the setup script, then you may execute the full program.
 
-## TODO
-
-Official Bot Creation Guide
-https://docs.fluxer.app/quickstart#step-1-set-up-your-project
 
 ### FURTHER TODO
 
@@ -36,6 +32,8 @@ During the migration process, dedicated suffixed `-thread` channels could be cre
 ## Version Support
 
 Tested with Python 3.12, but in theory should work for older versions of Python.
+
+# Running the Program
 
 ## Discord Bot Setup
 
@@ -119,7 +117,6 @@ To enable the migration program to interact with your Fluxer server, create a Fl
 
 By following these instructions, your bots will have the necessary access to perform the migration tasks.
 
-
 ## Server Origin and Target Server Setup
 
 
@@ -163,12 +160,24 @@ This program reads a `config.yaml` file, in its root program directory. This is 
       between_messages_seconds: 0.5
       between_channels_seconds: 5.0
 
+      
+## Run the Setup.sh Script
+
+Open a command terminal at the location where you have `Discord-to-Fluxer` code files. Run:
+
+  sh setup.py
+  
+This will create a virtual python environment and install the program's dependency files.
+
+## Run the Exporter
+
+Finally you are ready. To run the exporter, open a command terminal at the location where you have `Discord-to-Fluxer` code files. Run:
+
+  source .venv/bin/python
+  python main.py
+
 
 # Developer Notes
-
-# Install.sh & Setup.py
-
-Create install.sh and setup.py files, similar to your other projects.
 
 ## Multi-threading, Multi-processing and Order Preservation
 

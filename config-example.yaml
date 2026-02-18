@@ -1,0 +1,9 @@
+discord:
+    token_file: "discord_token.token"
+    guild_id: "00000000000000000000"
+fluxer:
+    token_file: "fluxer_token.token"
+    server_id: "1234567890ABCDEFGH"
+delays:
+    between_messages_seconds: 0.5
+    between_channels_seconds: 5.0

@@ -1,0 +1,47 @@
+# Key areas to test
+
+1. Configuration Loading (AppConfig, load_config):
+
+- Test successful loading of valid YAML.
+- Test handling of missing files.
+- Test handling of malformed YAML.
+- Test handling of missing required keys.
+- Test read_token_from_file.
+
+2. State Management (StateManager):
+
+- Test connection and table creation.
+- Test storing and retrieving channel mappings.
+- Test storing and retrieving message mappings.
+- Test retrieving the last migrated message ID.
+- Test clear_all_data (with caution, as it involves input).
+
+
+3. Discord Client (DiscordClient):
+
+- Mock discord.Client: The discord.py library's client is an asyncio event loop that connects to a WebSocket. We absolutely must mock this.
+- Test get_guild_channels (returning various channel types, handling errors).
+- Test get_channel_messages (pagination, attachments, replies, author info).
+- Test download_attachment (successful download, HTTP errors).
+
+
+4. Fluxer Client (FluxerClient):
+
+- Mock pyvolt.Client and aiohttp.ClientSession: Similar to Discord, this involves network calls that must be mocked.
+- Test start (server fetch success/failure).
+- Test _create_revolt_channel_from_discord (channel type mapping, creation success/failure).
+- Test get_server_channels (different channel types, error handling).
+- Test send_message (content, attachments, replies, masquerade, rate limiting).
+- Test upload_attachment (successful upload, different tags, file data, error handling).
+
+
+5. Migration Tool (MigrationTool):
+
+- Orchestration logic: This class coordinates the clients and the database. We'll mock the DiscordClient, FluxerClient, and StateManager instances it uses.
+- Test setup_server_structure (channel sorting, skipping categories, handling existing channels, creating new ones).
+- Test migrate_messages (fetching messages, handling attachments, handling replies, updating state, respecting delays).
+- Test run_full_migration (high-level flow, error handling). 
+
+
+
+

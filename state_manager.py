@@ -88,24 +88,24 @@ class StateManager:
         self.conn.commit()
         print("SQLite tables checked/created.")
 
-    def store_channel_mapping(self, discord_id, revolt_id):
+    def store_channel_mapping(self, discord_id, fluxer_id):
         """Stores a mapping between a Discord channel ID and a Fluxer channel ID."""
         cursor = self.conn.cursor()
         cursor.execute('''
             INSERT OR REPLACE INTO channel_mappings (discord_id, revolt_id)
             VALUES (?, ?)
-        ''', (discord_id, revolt_id))
+        ''', (discord_id, fluxer_id))
         self.conn.commit()
-        print(f"Stored channel mapping: Discord {discord_id} -> Fluxer {revolt_id}")
+        print(f"Stored channel mapping: Discord {discord_id} -> Fluxer {fluxer_id}")
 
-    def get_revolt_channel_id(self, discord_id):
+    def get_fluxer_channel_id(self, discord_id):
         """Retrieves the Fluxer channel ID for a given Discord channel ID."""
         cursor = self.conn.cursor()
         cursor.execute('SELECT revolt_id FROM channel_mappings WHERE discord_id = ?', (discord_id,))
         result = cursor.fetchone()
         return result[0] if result else None
 
-    def store_message_mapping(self, discord_message_id, revolt_message_id, discord_channel_id, revolt_channel_id, original_discord_content, original_discord_attachments):
+    def store_message_mapping(self, discord_message_id, fluxer_message_id, discord_channel_id, fluxer_channel_id, original_discord_content, original_discord_attachments):
         """
         Stores a mapping between a Discord message ID and a Fluxer message ID,
         along with their respective channel IDs, content, and attachments.
@@ -114,9 +114,9 @@ class StateManager:
         cursor.execute('''
             INSERT OR REPLACE INTO message_mappings (discord_id, revolt_id, channel_discord_id, channel_revolt_id, original_discord_content, original_discord_attachments)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (discord_message_id, revolt_message_id, discord_channel_id, revolt_channel_id, original_discord_content, json.dumps(original_discord_attachments)))
+        ''', (discord_message_id, fluxer_message_id, discord_channel_id, fluxer_channel_id, original_discord_content, json.dumps(original_discord_attachments)))
         self.conn.commit()
-        # print(f"Stored message mapping: Discord {discord_message_id} -> Fluxer {revolt_message_id}")
+        # print(f"Stored message mapping: Discord {discord_message_id} -> Fluxer {fluxer_message_id}")
 
     def get_last_migrated_message_id(self, discord_channel_id):
         """
@@ -132,17 +132,17 @@ class StateManager:
         result = cursor.fetchone()
         return result[0] if result else None
 
-    def get_revolt_message_id(self, discord_message_id):
+    def get_fluxer_message_id(self, discord_message_id):
         """Retrieves the Fluxer message ID for a given Discord message ID."""
         cursor = self.conn.cursor()
         cursor.execute('SELECT revolt_id FROM message_mappings WHERE discord_id = ?', (discord_message_id,))
         result = cursor.fetchone()
         return result[0] if result else None
 
-    def get_discord_message_id(self, revolt_message_id):
+    def get_discord_message_id(self, fluxer_message_id):
         """Retrieves the Discord message ID for a given Fluxer message ID."""
         cursor = self.conn.cursor()
-        cursor.execute('SELECT discord_id FROM message_mappings WHERE revolt_id = ?', (revolt_message_id,))
+        cursor.execute('SELECT discord_id FROM message_mappings WHERE revolt_id = ?', (fluxer_message_id,))
         result = cursor.fetchone()
         return result[0] if result else None
 
@@ -159,7 +159,7 @@ class StateManager:
         result = cursor.fetchone()
         if result:
             return {
-                "revolt_id": result[0],
+                "fluxer_id": result[0],
                 "original_discord_content": result[1],
                 "original_discord_attachments": json.loads(result[2]) if result[2] else []
             }
@@ -172,17 +172,17 @@ class StateManager:
         self.conn.commit()
         print(f"Deleted message mapping for Discord ID {discord_message_id} from DB.")
 
-    def store_emoji_mapping(self, discord_emoji_id, revolt_emoji_id, emoji_name):
+    def store_emoji_mapping(self, discord_emoji_id, fluxer_emoji_id, emoji_name):
         """Stores a mapping between a Discord emoji ID and a Fluxer emoji ID."""
         cursor = self.conn.cursor()
         cursor.execute('''
             INSERT OR REPLACE INTO emoji_mappings (discord_id, revolt_id, name)
             VALUES (?, ?, ?)
-        ''', (discord_emoji_id, revolt_emoji_id, emoji_name))
+        ''', (discord_emoji_id, fluxer_emoji_id, emoji_name))
         self.conn.commit()
-        print(f"Stored emoji mapping: Discord {discord_emoji_id} -> Fluxer {revolt_emoji_id} (Name: {emoji_name})")
+        print(f"Stored emoji mapping: Discord {discord_emoji_id} -> Fluxer {fluxer_emoji_id} (Name: {emoji_name})")
 
-    def get_revolt_emoji_id(self, discord_emoji_id):
+    def get_fluxer_emoji_id(self, discord_emoji_id):
         """Retrieves the Fluxer emoji ID for a given Discord emoji ID."""
         cursor = self.conn.cursor()
         cursor.execute('SELECT revolt_id FROM emoji_mappings WHERE discord_id = ?', (discord_emoji_id,))

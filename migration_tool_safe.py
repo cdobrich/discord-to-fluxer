@@ -340,7 +340,7 @@ class MigrationTool:
 
                             fluxer_reply_to_id = None
                             if d_message['reply_to_discord_id']:
-                                fluxer_reply_to_id = self.db.get_revolt_message_id(d_message['reply_to_discord_id'])
+                                fluxer_reply_to_id = self.db.get_fluxer_message_id(d_message['reply_to_discord_id'])
                                 if not fluxer_reply_to_id:
                                     print(f"      Warning: Could not find Fluxer message ID for Discord reply ID {d_message['reply_to_discord_id']}. Reply will not be linked.")
 
@@ -370,7 +370,7 @@ class MigrationTool:
                             # --- Handle Message Edits or New Messages ---
                             db_entry = self.db.get_message_details_by_discord_id(d_message['id']) # Re-fetch to ensure current state
                             if db_entry: # Message already exists in our database, check for edits
-                                stored_fluxer_id = db_entry['revolt_id']
+                                stored_fluxer_id = db_entry['fluxer_id']
                                 stored_content = db_entry['original_discord_content']
                                 stored_attachments = db_entry['original_discord_attachments']
 
@@ -386,9 +386,9 @@ class MigrationTool:
                                     if edit_success:
                                         self.db.store_message_mapping( # Update DB with new content/attachments
                                             discord_message_id=d_message['id'],
-                                            revolt_message_id=stored_fluxer_id,
+                                            fluxer_message_id=stored_fluxer_id,
                                             discord_channel_id=discord_channel_id,
-                                            revolt_channel_id=fluxer_channel_id,
+                                            fluxer_channel_id=fluxer_channel_id,
                                             original_discord_content=current_discord_content,
                                             original_discord_attachments=current_discord_attachment_urls
                                         )
@@ -412,9 +412,9 @@ class MigrationTool:
                                     fluxer_message_id = r_message['id']
                                     self.db.store_message_mapping(
                                         discord_message_id=d_message['id'],
-                                        revolt_message_id=fluxer_message_id,
+                                        fluxer_message_id=fluxer_message_id,
                                         discord_channel_id=discord_channel_id,
-                                        revolt_channel_id=fluxer_channel_id,
+                                        fluxer_channel_id=fluxer_channel_id,
                                         original_discord_content=current_discord_content,
                                         original_discord_attachments=current_discord_attachment_urls
                                     )
@@ -483,7 +483,7 @@ class MigrationTool:
             try:
                 discord_pinned_to_fluxer = {}
                 for d_id in discord_current_pinned_set:
-                    r_id = self.db.get_revolt_message_id(d_id)
+                    r_id = self.db.get_fluxer_message_id(d_id)
                     if r_id:
                         discord_pinned_to_fluxer[d_id] = r_id
                 for d_id, r_id in discord_pinned_to_fluxer.items():
@@ -544,9 +544,9 @@ class MigrationTool:
                         if edit_success:
                             self.db.store_message_mapping(
                                 discord_message_id=discord_id_in_db,
-                                revolt_message_id=fluxer_id_in_db,
+                                fluxer_message_id=fluxer_id_in_db,
                                 discord_channel_id=discord_channel_id,
-                                revolt_channel_id=fluxer_channel_id,
+                                fluxer_channel_id=fluxer_channel_id,
                                 original_discord_content=current_content,
                                 original_discord_attachments=current_attachment_urls
                             )

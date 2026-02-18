@@ -153,6 +153,64 @@ class FluxerClient:
         """
         return await self.get_server_channels(guild_id)
 
+    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3) -> dict[str, Any] | None:
+        """
+        Sends a message with optional attachments to a Fluxer channel.
+        Attachments should be a list of dicts, each with 'filename' and 'data' (bytes).
+        """
+        print(f"Fluxer: Attempting to send message to channel {channel_id} with content: {content[:50]}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot send message.")
+            return None
+
+        files_to_send = []
+        if attachments:
+            for attachment in attachments:
+                files_to_send.append({
+                    "filename": attachment["filename"],
+                    "data": attachment["data"]
+                })
+            print(f"Fluxer: Preparing to send {len(files_to_send)} attachments.")
+
+        for attempt in range(max_retries):
+            try:
+                message_data = await self.fluxer_bot._http.send_message(
+                    channel_id=channel_id,
+                    content=content,
+                    files=files_to_send if files_to_send else None
+                )
+                print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {message_data.get('id')}")
+                return message_data
+            except HTTPException as e:
+                print(f"Fluxer: Error sending message (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
+                if e.status == 401:
+                    print("Fluxer: Unauthorized (401) - Check bot token and 'Send Messages' permission.")
+                    return None
+                elif e.status == 403:
+                    print("Fluxer: Forbidden (403) - Bot lacks 'Send Messages' permission in this channel.")
+                    return None
+                elif e.status == 404:
+                    print(f"Fluxer: Channel {channel_id} not found. Skipping.")
+                    return None
+                elif e.status == 429: # Rate limit
+                    wait_time = e.retry_after if hasattr(e, 'retry_after') and e.retry_after else (2 ** attempt)
+                    print(f"Fluxer: Rate limit hit. Waiting for {wait_time:.2f} seconds.")
+                    await asyncio.sleep(wait_time)
+                elif 500 <= e.status < 600: # Server errors (5xx)
+                    wait_time = 2 ** attempt
+                    print(f"Fluxer: Server error (HTTP {e.status}). Retrying in {wait_time} seconds.")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"Fluxer: Unhandled HTTP error {e.status}. Not retrying.")
+                    return None
+            except Exception as e:
+                print(f"An unexpected error occurred sending message: {e}")
+                traceback.print_exc()
+                return None
+
+        print(f"Fluxer: Failed to send message to channel {channel_id} after {max_retries} attempts.")
+        return None
+
     async def edit_message(self, channel_id: str, message_id: str, new_content: str, new_attachments: list[Any] | None = None, max_retries: int = 3) -> bool:
         """
         Edits an existing message in a Fluxer channel.

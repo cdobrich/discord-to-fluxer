@@ -24,6 +24,7 @@ def mock_fluxer_api():
         mock_http.get_guild_emojis = AsyncMock()
         mock_http.create_guild_emoji = AsyncMock()
         mock_http.delete_message = AsyncMock()
+        mock_http.send_message = AsyncMock()
 
         yield {
             'ClientBase': MockClientBase,
@@ -279,3 +280,55 @@ async def test_placeholders(mock_fluxer_api):
     assert await client.unpin_message("c1", "m1") is False
     assert await client.get_channel_pinned_messages("c1") == []
     assert await client.get_pinned_message_ids("c1") == []
+
+@pytest.mark.asyncio
+async def test_send_message_with_attachments(mock_fluxer_api):
+    client = FluxerClient("fake_token", "fake_guild_id")
+    
+    mock_message_data = {"id": "m1", "content": "hello"}
+    mock_fluxer_api['http'].send_message.return_value = mock_message_data
+
+    attachments = [
+        {"filename": "test.txt", "data": b"test data"},
+        {"filename": "image.png", "data": b"image data"}
+    ]
+
+    result = await client.send_message("c1", "hello", attachments=attachments)
+    
+    assert result['id'] == "m1"
+    mock_fluxer_api['http'].send_message.assert_called_with(
+        channel_id="c1",
+        content="hello",
+        files=[
+            {"filename": "test.txt", "data": b"test data"},
+            {"filename": "image.png", "data": b"image data"}
+        ]
+    )
+
+@pytest.mark.asyncio
+async def test_send_message_no_attachments(mock_fluxer_api):
+    client = FluxerClient("fake_token", "fake_guild_id")
+    
+    mock_message_data = {"id": "m1", "content": "hello"}
+    mock_fluxer_api['http'].send_message.return_value = mock_message_data
+
+    result = await client.send_message("c1", "hello")
+    
+    assert result['id'] == "m1"
+    mock_fluxer_api['http'].send_message.assert_called_with(
+        channel_id="c1",
+        content="hello",
+        files=None
+    )
+
+@pytest.mark.asyncio
+async def test_send_message_failure(mock_fluxer_api):
+    client = FluxerClient("fake_token", "fake_guild_id")
+    
+    error = HTTPException(AsyncMock(), MagicMock(), "Forbidden")
+    error.status = 403
+    mock_fluxer_api['http'].send_message.side_effect = error
+
+    result = await client.send_message("c1", "hello")
+    
+    assert result is None

@@ -168,110 +168,74 @@ The current asynchronous design, combined with the logic of fetching messages `a
 
 - Sequential Posting: Each fetched message (and its attachments) is then posted to the corresponding Fluxer channel sequentially. A delay is introduced after each message to prevent overwhelming the Fluxer API and to further aid in maintaining order and avoiding rate limits.
 
+# FEATURE STATUS for Migration
+
+## Channel Creation
+- Initial migration: UNTESTED
+- Updated changes migrated after initial migration: UNTESTED
+
 ## Emojis
 
-### Feature Status
-- Initial migration: DONE
-- Updated changes migrated after initial migration: PENDING
+- Initial migration: UNTESTED
+- Updated changes migrated after initial migration: UNTESTED
 
 The program will migrate custom emoji from Discord servers to target Fluxer servers. 
 
 If the emoji of the same name already exists on the target server, it will skip uploading. (In order to avoid duplciation.) It does not check the image contents, only the emoji name. So for example, if migrating 'kek' from Discord, but 'kek' already exists on Fluxer, this emoji will be skipped.
 
-## Preserving "Reply-to" Linkage
+## Messags to Channels & Message Attachment
 
-Reply-to links are preserved, if possible, during the migration process.
+- Initial migration: UNTESTED
+- Updated changes migrated after initial migration: UNTESTED
 
-DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Fluxer message from that migration, the script also tracks the fluxer-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated fluxer-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new fluxer message that uses the fluxer-message-reply-to system to target the correct prior message.
-
-
-## Notes on Supported Migration
-
-During the migration-proces, the data flow is from the origin Discord chat to target Fluxer server.
-
-### DONE
-
-Migration features include:
-- (from origin server to target Fluxer server) replicate all channels
-- (from origin server to target Fluxer server) import custom emojis
-
-- (from origin server to target Fluxer server) pinned messages on all channels should be similarly pinned on the target server.
-
-### PENDING
-
-Waiting for the Fluxer.py library to update with attachment suport.
+Recently received Fluxer.py library to support with messages with attachments.
 
 - (from origin server to target Fluxer server) copy all prior messages in all channels, in chronological order of their creation, including attachment groups.
   - Attachments are included and correctly grouped 
   - Any Reply-to links are preserved, if possible, during copying all messages.
 
-### Not Supported
+- Update contents, meaning if message text was changed or deleted, this change should be reflected in Fluxer chat
+- Update deleted messages, meaning if one has been erased in Discord, it should be erased in Fluxer.
+
+
+## Pinned Messages / Pins
+
+
+- Initial migration: UNTESTED
+- Updated changes migrated after initial migration: UNTESTED
+  - Pinned message updates (removal or promotion, plus new messages that have been pinned): UNTESTED
+- Preserve pins in threads: Not possible to implement until threading is implemented: UNTESTED
+
+
+## "Reply-to" Linkage Preserving
+
+- Initial migration: UNTESTED
+- Updated changes migrated after initial migration: UNTESTED
+
+
+Reply-to links are preserved, if possible, during the migration process.
+
+DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Fluxer message from that migration, the script also tracks the fluxer-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated fluxer-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new fluxer message that uses the fluxer-message-reply-to system to target the correct prior message.
+
+  
+# Not Supported Features
 
 Threads or Threading of conversations: This is due to a limitation of the Fluxer architecture.
 
-#### Future Workarounds
+## Future Workarounds
 
 During the migration process, dedicated suffixed `-thread` channels could be created.
 
-## Version Support
+# Version Support
 
 Tested with Python 3.12, but in theory should work for older versions of Python.
 
 
-# TODO / Pending Tasks
-
-## Multi-Attachment Messages
-
-This is a high priority critical feature.
-
-- For multi-attachment messages, due to limitations with Fluxer's current channel message display, note these were part of a series. Later this can be converted into a single combined post of multiple images.
-
-### Roadmap
-
-1. For the project's use-case, an intermediary migration option will be:
-  - Create attachment-groups. Architecture as follows:
-  - For every message which contains multiple attachments, create attachment-groups with the `original-discord-message-id + - + attachment-count` format.
-    - Thread-ids must have a derivable relationship, meaning a discord-message must be able to match to a target attachment-groups.
-      - It is not necessary for a attachment-groups be able to look up its original discord-message, though this might be useful for syncing both ways.
-      - IMPLEMENTATION APPROACH: Store the original discord-message-id in the attachment-groups headers. 
-  - LIMITATIONS: 
-  - FUTURE: When multi-attachment messages is eventually added to Fluxer, these attachment-groups can be converted into proper multi-attachment messages later.
-1. An attempt will be made, investigating how difficult it will be to implement multi-attachment messages within the backend + frontend of Fluxer.
+# Future Roadmap / Pending Tasks
 
 ## Contents Update Syncing
 
 - Update the migrator to check for edited-dates on posts, indicating a post has been updated and therefore should be updated on the Fluxer server
-
-### Feature Status
-  - Initial migration: 
-  - Updated changes migrated after initial migration: 
-
-## Messages
-
-- Update contents, meaning if message text was changed or deleted, this change should be reflected in Fluxer chat
-- Update deleted messages, meaning if one has been erased in Discord, it should be erased in Fluxer.
-
-### Feature Status
-  - Initial migration: 
-  - Updated changes migrated after initial migration: 
-
-## Misc.
-
-- Forwarded Cross Post migrating
-- Emoji reaction changes are updated
-
-### Feature Status
-  - Initial migration: 
-  - Updated changes migrated after initial migration: 
-
-## Pins
-
-### Feature Status
-
-- Preserve pins in channels (initial migration): DONE
-- Updated changes migrated after initial migration: PENDING
-  - Pinned message updates (removal or promotion, plus new messages that have been pinned)
-- Preserve pins in threads: Not possible to implement until threading is implemented
 
 ## Threads
 

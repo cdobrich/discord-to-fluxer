@@ -112,7 +112,7 @@ class FluxerClient:
             traceback.print_exc()
             return None
 
-    async def get_guild_channels(self, guild_id: str) -> list[dict[str, Any]]:
+    async def get_server_channels(self, guild_id: str) -> list[dict[str, Any]]:
         """
         Fetches channels from a Fluxer guild.
         Returns a list of dictionaries with 'id', 'name', 'type', 'parent_id'.
@@ -145,6 +145,13 @@ class FluxerClient:
             print(f"An unexpected error occurred fetching Fluxer channels: {e}")
             traceback.print_exc()
             return []
+
+    async def get_guild_channels(self, guild_id: str) -> list[dict[str, Any]]:
+        """
+        Fetches channels from a Fluxer guild.
+        Returns a list of dictionaries with 'id', 'name', 'type', 'parent_id'.
+        """
+        return await self.get_server_channels(guild_id)
 
     async def edit_message(self, channel_id: str, message_id: str, new_content: str, new_attachments: list[Any] | None = None, max_retries: int = 3) -> bool:
         """
@@ -198,7 +205,7 @@ class FluxerClient:
         print(f"Fluxer: Failed to edit message {message_id} after {max_retries} attempts.")
         return False
 
-    async def get_guild_emojis(self, guild_id: str) -> list[dict[str, Any]]:
+    async def get_server_emojis(self, guild_id: str) -> list[dict[str, Any]]:
         """
         Fetches custom emojis from a Fluxer guild.
         Returns a list of dictionaries with 'id', 'name'.
@@ -225,6 +232,13 @@ class FluxerClient:
             print(f"An unexpected error occurred fetching existing Fluxer emojis: {e}")
             traceback.print_exc()
             return []
+
+    async def get_guild_emojis(self, guild_id: str) -> list[dict[str, Any]]:
+        """
+        Fetches custom emojis from a Fluxer guild.
+        Returns a list of dictionaries with 'id', 'name'.
+        """
+        return await self.get_server_emojis(guild_id)
 
     async def create_emoji(self, guild_id: str, name: str, file_data: bytes) -> dict[str, Any] | None:
         """

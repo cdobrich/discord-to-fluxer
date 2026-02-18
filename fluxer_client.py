@@ -2,17 +2,17 @@ import asyncio
 import traceback
 from typing import Any
 
-from fluxer_api.client import Client as FluxerClientBase
-from fluxer_api.http import HTTPClient
-from fluxer_api.enums import ChannelType
-from fluxer_api.errors import HTTPException
-from fluxer_api.models import Channel, Guild, Message, Emoji
+from fluxer.client import Client as FluxerClientBase
+from fluxer.http import HTTPClient
+from fluxer.enums import ChannelType
+from fluxer.errors import HTTPException
+from fluxer.models import Channel, Guild, Message, Emoji
 
 
 class FluxerClient:
     """
     A client for interacting with the Fluxer API using fluxer.py.
-    Uses fluxer_api.client.Client for all interactions.
+    Uses fluxer.client.Client for all interactions.
     """
     def __init__(self, token: str, fluxer_guild_id: str):
         self.token = token

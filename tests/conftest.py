@@ -14,10 +14,10 @@ from datetime import datetime
 from config import AppConfig
 from migration_tool import MigrationTool
 from state_manager import StateManager
-from revolt_client import RevoltClient
+from fluxer_client import FluxerClient
 from discord_client import DiscordClient
-import discord # For discord.ChannelType
-from pyvolt.enums import ChannelType # For pyvolt.enums.ChannelType
+import discord
+from fluxer.enums import ChannelType
 
 # Fixture for a mock configuration file content
 @pytest.fixture
@@ -27,8 +27,8 @@ def mock_config_content():
             'token_file': 'mock_discord_token.token',
             'guild_id': '123456789012345678'
         },
-        'revolt': {
-            'token_file': 'mock_revolt_token.token',
+        'fluxer': {
+            'token_file': 'mock_fluxer_token.token',
             'server_id': 'mockserverid'
         },
         'delays': {
@@ -49,20 +49,20 @@ def mock_config_file(tmp_path, mock_config_content):
 @pytest.fixture
 def mock_token_files(tmp_path):
     discord_token_file = tmp_path / "mock_discord_token.token"
-    revolt_token_file = tmp_path / "mock_revolt_token.token"
+    fluxer_token_file = tmp_path / "mock_fluxer_token.token"
     discord_token_file.write_text("fake_discord_token")
-    revolt_token_file.write_text("fake_revolt_token")
+    fluxer_token_file.write_text("fake_fluxer_token")
     return {
         'discord': str(discord_token_file),
-        'revolt': str(revolt_token_file)
+        'fluxer': str(fluxer_token_file)
     }
 
 # Fixture for an AppConfig instance with mocked token reading
 @pytest.fixture
 def mock_app_config(mock_config_content, mock_token_files):
-    with patch('discord_to_revolt.read_token_from_file', side_effect=lambda f: {
+    with patch('discord_to_fluxer.read_token_from_file', side_effect=lambda f: {
         mock_token_files['discord']: "fake_discord_token",
-        mock_token_files['revolt']: "fake_revolt_token"
+        mock_token_files['fluxer']: "fake_fluxer_token"
     }.get(f, None)):
         return AppConfig(mock_config_content)
 
@@ -90,32 +90,40 @@ def mock_discord_client():
 
     return mock_client
 
-# Fixture for a mock RevoltClient
+# Fixture for a mock FluxerClient
 @pytest.fixture
-def mock_revolt_client():
-    mock_client = AsyncMock(spec=RevoltClient)
-    mock_client.token = "fake_revolt_token"
-    mock_client.revolt_server_id = "mockserverid"
+def mock_fluxer_client():
+    mock_client = AsyncMock(spec=FluxerClient)
+    mock_client.token = "fake_fluxer_token"
+    mock_client.fluxer_guild_id = "mockserverid"
     
-    mock_server = MagicMock()
-    mock_server.name = "MockRevoltServer"
-    mock_server.id = "mockserverid"
-    mock_client.revolt_server = mock_server
+    mock_guild = MagicMock()
+    mock_guild.name = "MockFluxerServer"
+    mock_guild.id = "mockserverid"
+    mock_client.fluxer_guild = mock_guild
 
-    # Mock pyvolt client and methods
-    mock_client.revolt_bot = MagicMock(spec=pyvolt.Client)
-    mock_client.revolt_bot.fetch_server.return_value = mock_server
-    
     # Mock create_channel to return a mock channel object
-    mock_client._create_revolt_channel_from_discord.return_value = {
-        "id": "new_revolt_channel_id", "name": "new-channel", "type": "text"
+    mock_client._create_fluxer_channel_from_discord.return_value = {
+        "id": "new_fluxer_channel_id", "name": "new-channel", "type": "text"
     }
     
     # Mock send_message to return a mock message ID
-    mock_client.send_message.return_value = {"id": "revolt_message_id_123"}
+    mock_client.send_message.return_value = {"id": "fluxer_message_id_123"}
     
     # Mock upload_attachment
-    mock_client.upload_attachment.return_value = {"id": "revolt_attachment_id_123", "filename": "test.txt"}
+    mock_client.upload_attachment.return_value = {"id": "fluxer_attachment_id_123", "filename": "test.txt"}
+
+    # Mock get_server_channels (MigrationTool calls this)
+    mock_client.get_server_channels.return_value = []
+
+    # Mock get_server_emojis (MigrationTool calls this)
+    mock_client.get_server_emojis.return_value = []
+    
+    # Mock create_emoji
+    mock_client.create_emoji.return_value = {"id": "e1", "name": "emoji"}
+    
+    # Mock get_pinned_message_ids
+    mock_client.get_pinned_message_ids.return_value = []
 
     return mock_client
 
@@ -130,7 +138,7 @@ def mock_state_manager(tmp_path):
     mock_manager.close.return_value = None
     mock_manager.create_tables.return_value = None
     mock_manager.store_channel_mapping.return_value = None
-    mock_manager.get_revolt_channel_id.return_value = None
+    mock_manager.get_fluxer_channel_id.return_value = None
     mock_manager.store_message_mapping.return_value = None
     mock_manager.get_last_migrated_message_id.return_value = None
     mock_manager.set_migration_status.return_value = None
@@ -143,16 +151,16 @@ def mock_state_manager(tmp_path):
 
 # Fixture for MigrationTool with mocked clients and state manager
 @pytest.fixture
-def mock_migration_tool(mock_app_config, mock_discord_client, mock_revolt_client, mock_state_manager):
+def mock_migration_tool(mock_app_config, mock_discord_client, mock_fluxer_client, mock_state_manager):
     # Patch the actual classes with our mock instances
-    with patch('discord_to_revolt.DiscordClient', return_value=mock_discord_client), \
-         patch('discord_to_revolt.RevoltClient', return_value=mock_revolt_client), \
-         patch('discord_to_revolt.StateManager', return_value=mock_state_manager):
+    with patch('discord_to_fluxer.DiscordClient', return_value=mock_discord_client), \
+         patch('discord_to_fluxer.FluxerClient', return_value=mock_fluxer_client), \
+         patch('discord_to_fluxer.StateManager', return_value=mock_state_manager):
         
         # Instantiate MigrationTool, it will now use the patched clients/manager
         tool = MigrationTool(mock_app_config)
         # Ensure the internal instances are our mocks
         tool.discord_client = mock_discord_client
-        tool.revolt_client = mock_revolt_client
+        tool.fluxer_client = mock_fluxer_client
         tool.db = mock_state_manager
         return tool

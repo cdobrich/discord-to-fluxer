@@ -133,10 +133,10 @@ class MigrationTool:
                     # Determine the Fluxer channel type that this Discord channel *would be created as*
                     fluxer_type_for_comparison = None
                     if discord_channel_type_enum == discord.ChannelType.text:
-                        fluxer_type_for_comparison = ChannelType.text.name.lower() # 'text'
+                        fluxer_type_for_comparison = ChannelType.GUILD_TEXT.name.lower().replace('guild_', '') # 'text'
                     elif discord_channel_type_enum == discord.ChannelType.voice:
-                        # Discord voice channels are created as Fluxer text channels
-                        fluxer_type_for_comparison = ChannelType.text.name.lower() # 'text'
+                        # Discord voice channels are created as Fluxer voice channels
+                        fluxer_type_for_comparison = ChannelType.GUILD_VOICE.name.lower().replace('guild_', '') # 'voice'
 
                     if not fluxer_type_for_comparison:
                         print(f"  Could not determine Fluxer type for Discord channel '{d_channel['name']}'. Skipping.")
@@ -156,7 +156,7 @@ class MigrationTool:
                         print(f"  [{i+1}/{len(channel_list)}] {discord_channel_type_enum.name.capitalize()} Channel '{d_channel['name']}': Creating on Fluxer...")
                         r_channel = await self.fluxer_client._create_fluxer_channel_from_discord(d_channel)
                         if r_channel:
-                            self.db.store_channel_mapping(d_channel['id'], r_channel['id'])
+                            self.db.store_channel_mapping(d_channel['id'], r_channel.id)
                         else:
                             print(f"  Warning: Failed to create Fluxer channel for Discord channel '{d_channel['name']}'.")
 

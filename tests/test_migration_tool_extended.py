@@ -13,7 +13,7 @@ class TestExtendedMigrationTool(unittest.IsolatedAsyncioTestCase):
         db = StateManager(":memory:")
         db.connect()
         db.store_channel_mapping("discord123", "fluxer456")
-        fluxer_id = db.get_revolt_channel_id("discord123")
+        fluxer_id = db.get_fluxer_channel_id("discord123")
         self.assertEqual(fluxer_id, "fluxer456")
         db.close()
 

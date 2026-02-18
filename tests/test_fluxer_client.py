@@ -60,9 +60,8 @@ async def test_start_guild_not_found_error(mock_fluxer_api):
     client = FluxerClient("fake_token", "fake_guild_id")
     
     # Simulate 404
-    error = HTTPException(AsyncMock(), MagicMock())
+    error = HTTPException(AsyncMock(), MagicMock(), "Not Found")
     error.status = 404
-    error.message = "Not Found"
     mock_fluxer_api['bot'].fetch_guild.side_effect = error
 
     with pytest.raises(ValueError, match="Target Fluxer guild fake_guild_id not found or accessible"):
@@ -73,9 +72,8 @@ async def test_start_unauthorized_error(mock_fluxer_api):
     client = FluxerClient("fake_token", "fake_guild_id")
     
     # Simulate 401
-    error = HTTPException(AsyncMock(), MagicMock())
+    error = HTTPException(AsyncMock(), MagicMock(), "Unauthorized")
     error.status = 401
-    error.message = "Unauthorized"
     mock_fluxer_api['bot'].fetch_guild.side_effect = error
 
     with pytest.raises(ValueError, match="Fluxer API returned 'Unauthorized'"):
@@ -113,7 +111,7 @@ async def test_create_fluxer_channel_from_discord_text(mock_fluxer_api):
     mock_fluxer_api['http'].create_guild_channel.return_value = mock_created_channel_data
 
     # We need to patch Channel.from_data because it might try to use the real HTTP client or do validation
-    with patch('fluxer_api.models.Channel.from_data') as mock_from_data:
+    with patch('fluxer.models.Channel.from_data') as mock_from_data:
         mock_channel_obj = MagicMock(spec=Channel)
         mock_channel_obj.id = "new_channel_id"
         mock_channel_obj.name = "general"
@@ -146,7 +144,7 @@ async def test_create_fluxer_channel_from_discord_voice(mock_fluxer_api):
     }
     mock_fluxer_api['http'].create_guild_channel.return_value = mock_created_channel_data
 
-    with patch('fluxer_api.models.Channel.from_data') as mock_from_data:
+    with patch('fluxer.models.Channel.from_data') as mock_from_data:
         mock_channel_obj = MagicMock(spec=Channel)
         mock_channel_obj.id = "new_voice_id"
         mock_from_data.return_value = mock_channel_obj
@@ -219,9 +217,8 @@ async def test_edit_message_success(mock_fluxer_api):
 async def test_edit_message_failure(mock_fluxer_api):
     client = FluxerClient("fake_token", "fake_guild_id")
     
-    error = HTTPException(AsyncMock(), MagicMock())
+    error = HTTPException(AsyncMock(), MagicMock(), "Forbidden")
     error.status = 403
-    error.message = "Forbidden"
     mock_fluxer_api['http'].edit_message.side_effect = error
 
     result = await client.edit_message("c1", "m1", "new content")

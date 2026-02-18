@@ -158,7 +158,7 @@ This program reads a `config.yaml` file, in its root program directory. This is 
       guild_id: "YOUR_DISCORD_SERVER_ID"
     Fluxer:
       token_file: "Fluxer_token.token"
-      server_id: "YOUR_Fluxer_SERVER_ID"
+      server_id: "YOUR_FLUXER_SERVER_ID"
     delays:
       between_messages_seconds: 0.5
       between_channels_seconds: 5.0

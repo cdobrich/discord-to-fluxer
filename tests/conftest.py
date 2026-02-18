@@ -8,7 +8,6 @@ import pytest
 import yaml
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
 
 # Import classes from your script
 from config import AppConfig
@@ -17,7 +16,6 @@ from state_manager import StateManager
 from fluxer_client import FluxerClient
 from discord_client import DiscordClient
 import discord
-from fluxer.enums import ChannelType
 
 # Fixture for a mock configuration file content
 @pytest.fixture

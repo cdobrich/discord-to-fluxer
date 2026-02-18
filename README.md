@@ -52,7 +52,7 @@ Follow these steps:
 
 2.  **Copy Your Bot Token:**
     * Under the "Bot" tab, find the "TOKEN" section.
-    * Click "Reset Token" if needed, then copy the token.
+    * Click "Reset Token" if needed, then copy the token value.
         * THIS IS NOT YOUR CLIENT SECRET. Make sure to copy THE TOKEN, ***not*** the client secret.
     * **Create a file named `discord_token.token`** (or the name specified in your `config.yaml` under `discord:token_file`) in the same directory as your migration script.
     * Paste the copied token into this file and save it. **Ensure there are no extra spaces or newlines.**
@@ -77,49 +77,45 @@ Follow these steps:
 
 ## Fluxer Bot Setup
 
-To enable the migration program to interact with your Fluxer server, your Fluxer bot needs specific permissions. Follow these steps:
+To enable the migration program to interact with your Fluxer server, create a Fluxer bot and grant it specific permissions. Follow these steps:
 
-1.  **Create a Bot Application:**
-    * Login to https://app.Fluxer.chat
-    * Go to the [My Bots](https://app.Fluxer.chat/settings/bots).
-    * Click "Create a Bot"
-    * Copy your bot's token.
-    * **Create a file named `Fluxer_token.token`** (or the name specified in your `config.yaml` under `fluxer:token_file`) in the same directory as your migration script.
+
+1.  **Login:** Open the [Fluxer](https://web.fluxer.app/) app and sign in.
+
+2.  **Create a Bot Application:**
+    * Go to User Settings → Develoeprs → Applications. 
+    * This is done by finding your user Avatar and nearby should be a Gear-icon. Click this gear-icon to access the Settings.
+    * From there click the button 'Create Application'. Give the application a name.
+
+3.  **Copy Your Bot Token:**
+    * Find the section labeled "Secrets & Tokens" tab, find the "Bot token" section.
+    * Click "Regenerate" button if needed, then copy the token value.
+        * This seems necessary after first creating your Application regardless.
+        * THIS IS NOT YOUR CLIENT SECRET. Make sure to copy THE TOKEN, ***not*** the client secret.
+    * **Create a file named `fluxer_token.token`** (or the name specified in your `config.yaml` under `fluxer:token_file`) in the same directory as your migration script.
     * Paste the copied token into this file and save it. **Ensure there are no extra spaces or newlines.**
 
-2.  **Create Your Target Fluxer Server:**
-    * The migration program does not create new Fluxer servers. You must manually create the target Fluxer server where you want the Discord content to be migrated.
 
-3.  **Invite the Bot to Your Target Server and Grant Permissions:**
-    * Once your bot is created, you will need to invite it to your target Fluxer server. Still on the [My Bots](https://app.Fluxer.chat/settings/bots) section:
-    * Find the bot you just created.
-    * Click the "Copy invite Link". This will automatically copy the target Bot's ID into a one-click link.
-    * Paste the copied URL into your web browser.
-    * Select the target Fluxer server you wish to migrate into.
-    * Click the "Add" button. There may not be any visual feedback for this action succeeding. Check your target server after a minute to verify if the new Bot is there.
+4.  **Enable Permissions:**
+    * Still on the "Application" tab, scroll down to the "OAuth2 URL Builder" section.
+    * Select `bot' checkbox. A new section titled **"BOT PERMISSIONS"** will appear. In this section, select the following permissions:
+      * `Manage Channels`
+      * `Manage Emoji & Stickers`
+      * `View Channel`
+      * `Send Messages`
+      * `Manage Messages`
+      * `Pin Messages`
+      * `Embed Links`
+      * `Attach Files`
+      * `Read Message History`
+      * `Add Reactions`
+    * Scroll to the very bottom of this very. A URL will have been generated. Copy the generated URL.
+    * NOTE: After selecting the minimum `bot` step, more permissions can be granted later within a target server.
     
-4.  **Create Permissions to Your Fluxer Bot (via Roles):**
-    * Navigate to Server Settings.
-    * Go to your target Fluxer server.
-    * Click on the server name at the top left (or right-click the server icon in the sidebar).
-    * Select "Server Settings".
-    * Go to the "Roles" Section.
-      * In the Server Settings menu, find and click on "Roles" in the left sidebar.
-      * Create a New Role for Your Bot (Recommended). Click the "Create Role" button (often a + icon or similar).
-      * Give the new role a descriptive name, like "Migration Bot" or "Migrator Bot".
-    * Assign Permissions to the New Role:
-    * **Manage Channels:** To create new channels and categories replicating the Discord structure.
-      * Temporarily enable this, if you want the bot to automatically create channels for you. This can be turned off later after initial channel creations. Or you can manually duplicate all the target channels.
-    * **View Channels:** To see channels in the target server.
-    * **Send Messages:** To post migrated messages.
-    * **Upload Files:** To upload attachments.
-
-5.  **Assign the Role to Your Bot:**
-    * After setting the permissions for your new role, go back to the "Members" section in Server Settings.
-    * Find your bot in the member list.
-    * Click on your bot's entry.
-    * You should see an option to assign roles to it. Select the "Migration Bot" role (or whatever you named it).
-    * Save your changes.
+5.  **Invite the Bot to Your Server:**
+    * Paste the copied URL into your web browser.
+    * Select the Fluxer server you wish to add the Bot to, in order to migrate content into there.(Your own user must have "Manage Server" permissions on this server).
+    * Authorize the bot to be added.
 
 By following these instructions, your bots will have the necessary access to perform the migration tasks.
 
@@ -139,11 +135,11 @@ Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 
 ### Copy the Fluxer Server Channel ID
 
-1. Log into https://app.Fluxer.chat
+1. Log into https://web.fluxer.app/
 1. On the left side of the Fluxer Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
 1. Navigate to the server by Left-clicking the target server.
 1. Right-click on whatever is the target channel.
-1. From the menu, select 'Copy server ID'.
+1. From the menu, select 'Copy Community ID'.
 
 Store this server ID in the `config.yaml` file, in the `server_id: ` section.
 

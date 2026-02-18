@@ -14,16 +14,16 @@ class TestMigrationTool(unittest.IsolatedAsyncioTestCase):
         # Simulate config.yaml contents
         mock_yaml.return_value = {
             "discord": {"token_file": "discord_token.token", "guild_id": "1234567890"},
-            "fluxer": {"token_file": "fluxer_token.token", "server_id": "abcdef"},
+            "fluxer": {"token_file": "fluxer_token.token", "server_id": "987654321"},
             "delays": {"between_messages_seconds": 0.1, "between_channels_seconds": 0.5}
         }
         config = load_config()
         self.assertEqual(config.discord_token, "FAKE_DISCORD_TOKEN")
         self.assertEqual(config.discord_guild_id, "1234567890")
-        self.assertEqual(config.fluxer_server_id, "abcdef")
+        self.assertEqual(config.fluxer_server_id, "987654321")
 
     @patch("discord.Client.start", new_callable=AsyncMock)
-    @patch("discord_to_fluxer.discord.Client", autospec=True)
+    @patch("discord_client.discord.Client", autospec=True)
     async def test_discord_client_connection(self, mock_client_class, mock_start):
         mock_client = mock_client_class.return_value
         mock_client.user = MagicMock(id="123", name="BotUser")
@@ -33,7 +33,7 @@ class TestMigrationTool(unittest.IsolatedAsyncioTestCase):
         await client.start()
         self.assertTrue(mock_client.start.called)
             
-    @patch("discord_to_fluxer.discord.Client")
+    @patch("discord_client.discord.Client")
     async def test_discord_get_channels(self, mock_client_class):
         # Create mock client instance
         mock_client_instance = mock_client_class.return_value
@@ -70,38 +70,38 @@ class TestMigrationTool(unittest.IsolatedAsyncioTestCase):
     @patch("fluxer.client.Client.fetch_guild", new_callable=AsyncMock)
     @patch("fluxer.http.HTTPClient._ensure_session", new_callable=AsyncMock)
     async def test_fluxer_client_connection(self, mock_ensure_session, mock_fetch_guild):
-        mock_fetch_guild.return_value = MagicMock(id="abc123", name="TestServer")
-        client = FluxerClient(token="FAKE_FLUXER_TOKEN", fluxer_guild_id="abc123")
+        mock_fetch_guild.return_value = MagicMock(id="987654", name="TestServer")
+        client = FluxerClient(token="FAKE_FLUXER_TOKEN", fluxer_guild_id="987654")
         await client.start()
-        self.assertEqual(client.fluxer_guild.id, "abc123")
+        self.assertEqual(client.fluxer_guild.id, "987654")
 
     @patch("fluxer.http.HTTPClient.get_guild_channels", new_callable=AsyncMock)
     async def test_fluxer_fetch_channels(self, mock_get_channels):
         mock_get_channels.return_value = [
-            {"id": "chan1", "name": "chat", "type": ChannelType.GUILD_TEXT.value, "parent_id": None}
+            {"id": "12345", "name": "chat", "type": ChannelType.GUILD_TEXT.value, "parent_id": None}
         ]
 
-        client = FluxerClient(token="FAKE", fluxer_guild_id="abc")
+        client = FluxerClient(token="FAKE", fluxer_guild_id="987654")
         # Initialize http client manually as start() is not called
         from fluxer.http import HTTPClient
         client.fluxer_bot._http = HTTPClient("FAKE")
         
-        result = await client.get_guild_channels("abc")
+        result = await client.get_guild_channels("987654")
         self.assertEqual(result[0]['name'], "chat")
         self.assertEqual(result[0]['type'], "text")
 
     @patch("fluxer.http.HTTPClient.create_guild_channel", new_callable=AsyncMock)
     async def test_fluxer_create_channel(self, mock_create):
         mock_create.return_value = {
-            "id": "chan123",
+            "id": "123456",
             "name": "general",
             "type": ChannelType.GUILD_TEXT.value,
-            "guild_id": "abc"
+            "guild_id": "987654"
         }
 
-        client = FluxerClient(token="FAKE", fluxer_guild_id="abc")
+        client = FluxerClient(token="FAKE", fluxer_guild_id="987654")
         client.fluxer_guild = MagicMock()
-        client.fluxer_guild.id = "abc"
+        client.fluxer_guild.id = "987654"
         # Initialize http client
         from fluxer.http import HTTPClient
         client.fluxer_bot._http = HTTPClient("FAKE")

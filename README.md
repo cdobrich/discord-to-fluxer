@@ -6,18 +6,6 @@ You will need to create two bots (one for Discord and one for Fluxer), in order 
 
 ## TODO
 
-Use the [Fluxer.py](https://github.com/akarealemil/fluxer.py) python API wrapper for the new API calls.
-- This is available in the Python packages library (PIP or others): fluxer.py
-
-Use the [fluxer-discord-migration](https://github.com/akarealemil/fluxer-discord-migration) `main.py` for the better workflow of asking user for input.
-- Update the token gathering documentation.
-- Make sure the program does not update or store the new token info.
-
-The current `fluxer-discord-migration` app uses direct user tokens, and is not a Bot. This does work however:
-- This may not be desirable in the future, since it poses possible access-risks
-
-IDEAL SOLUTION: create a proper Fluxer Bot which can use the API to perform all the necessary steps, instead of masquerading as a user.
-
 Official Bot Creation Guide
 https://docs.fluxer.app/quickstart#step-1-set-up-your-project
 
@@ -87,9 +75,9 @@ Follow these steps:
     * Select the Discord server you wish to migrate from (you must have "Manage Server" permissions on this server).
     * Authorize the bot.
 
-## Stoat Bot Setup
+## Fluxer Bot Setup
 
-To enable the migration program to interact with your Stoat server, your Stoat bot needs specific permissions. Follow these steps:
+To enable the migration program to interact with your Fluxer server, your Fluxer bot needs specific permissions. Follow these steps:
 
 1.  **Create a Bot Application:**
     * Login to https://app.Fluxer.chat
@@ -99,20 +87,20 @@ To enable the migration program to interact with your Stoat server, your Stoat b
     * **Create a file named `Fluxer_token.token`** (or the name specified in your `config.yaml` under `fluxer:token_file`) in the same directory as your migration script.
     * Paste the copied token into this file and save it. **Ensure there are no extra spaces or newlines.**
 
-2.  **Create Your Target Stoat Server:**
-    * The migration program does not create new Stoat servers. You must manually create the target Stoat server where you want the Discord content to be migrated.
+2.  **Create Your Target Fluxer Server:**
+    * The migration program does not create new Fluxer servers. You must manually create the target Fluxer server where you want the Discord content to be migrated.
 
 3.  **Invite the Bot to Your Target Server and Grant Permissions:**
-    * Once your bot is created, you will need to invite it to your target Stoat server. Still on the [My Bots](https://app.Fluxer.chat/settings/bots) section:
+    * Once your bot is created, you will need to invite it to your target Fluxer server. Still on the [My Bots](https://app.Fluxer.chat/settings/bots) section:
     * Find the bot you just created.
     * Click the "Copy invite Link". This will automatically copy the target Bot's ID into a one-click link.
     * Paste the copied URL into your web browser.
-    * Select the target Stoat server you wish to migrate into.
+    * Select the target Fluxer server you wish to migrate into.
     * Click the "Add" button. There may not be any visual feedback for this action succeeding. Check your target server after a minute to verify if the new Bot is there.
     
-4.  **Create Permissions to Your Stoat Bot (via Roles):**
+4.  **Create Permissions to Your Fluxer Bot (via Roles):**
     * Navigate to Server Settings.
-    * Go to your target Stoat server.
+    * Go to your target Fluxer server.
     * Click on the server name at the top left (or right-click the server icon in the sidebar).
     * Select "Server Settings".
     * Go to the "Roles" Section.
@@ -149,10 +137,10 @@ By following these instructions, your bots will have the necessary access to per
 
 Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 
-### Copy the Stoat Server Channel ID
+### Copy the Fluxer Server Channel ID
 
 1. Log into https://app.Fluxer.chat
-1. On the left side of the Stoat Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
+1. On the left side of the Fluxer Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
 1. Navigate to the server by Left-clicking the target server.
 1. Right-click on whatever is the target channel.
 1. From the menu, select 'Copy server ID'.
@@ -198,7 +186,7 @@ The current asynchronous design, combined with the logic of fetching messages `a
 
 - Chronological Fetching: Within each channel, messages are fetched from Discord in chronological order (oldest to newest) using the after_message_id parameter.
 
-- Sequential Posting: Each fetched message (and its attachments) is then posted to the corresponding Stoat channel sequentially. A delay is introduced after each message to prevent overwhelming the Stoat API and to further aid in maintaining order and avoiding rate limits.
+- Sequential Posting: Each fetched message (and its attachments) is then posted to the corresponding Fluxer channel sequentially. A delay is introduced after each message to prevent overwhelming the Fluxer API and to further aid in maintaining order and avoiding rate limits.
 
 ## Emojis
 
@@ -206,15 +194,15 @@ The current asynchronous design, combined with the logic of fetching messages `a
 - Initial migration: DONE
 - Updated changes migrated after initial migration: PENDING
 
-The program will migrate custom emoji from Discord servers to target Stoat servers. 
+The program will migrate custom emoji from Discord servers to target Fluxer servers. 
 
-If the emoji of the same name already exists on the target server, it will skip uploading. (In order to avoid duplciation.) It does not check the image contents, only the emoji name. So for example, if migrating 'kek' from Discord, but 'kek' already exists on Stoat, this emoji will be skipped.
+If the emoji of the same name already exists on the target server, it will skip uploading. (In order to avoid duplciation.) It does not check the image contents, only the emoji name. So for example, if migrating 'kek' from Discord, but 'kek' already exists on Fluxer, this emoji will be skipped.
 
 ## Preserving "Reply-to" Linkage
 
 Reply-to links are preserved, if possible, during the migration process.
 
-DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Stoat message from that migration, the script also tracks the stoat-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated stoat-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new stoat message that uses the stoat-message-reply-to system to target the correct prior message.
+DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Fluxer message from that migration, the script also tracks the fluxer-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated fluxer-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new fluxer message that uses the fluxer-message-reply-to system to target the correct prior message.
 
 # TODO / Pending Tasks
 
@@ -222,7 +210,7 @@ DEVELOPER NOTES: The script implements message id tracking for both origin and t
 
 This is a high priority critical feature.
 
-- For multi-attachment messages, due to limitations with Stoat's current channel message display, note these were part of a series. Later this can be converted into a single combined post of multiple images.
+- For multi-attachment messages, due to limitations with Fluxer's current channel message display, note these were part of a series. Later this can be converted into a single combined post of multiple images.
 
 ### Roadmap
 
@@ -233,12 +221,12 @@ This is a high priority critical feature.
       - It is not necessary for a attachment-groups be able to look up its original discord-message, though this might be useful for syncing both ways.
       - IMPLEMENTATION APPROACH: Store the original discord-message-id in the attachment-groups headers. 
   - LIMITATIONS: 
-  - FUTURE: When multi-attachment messages is eventually added to Stoat, these attachment-groups can be converted into proper multi-attachment messages later.
-1. An attempt will be made, investigating how difficult it will be to implement multi-attachment messages within the backend + frontend of Stoat.
+  - FUTURE: When multi-attachment messages is eventually added to Fluxer, these attachment-groups can be converted into proper multi-attachment messages later.
+1. An attempt will be made, investigating how difficult it will be to implement multi-attachment messages within the backend + frontend of Fluxer.
 
 ## Contents Update Syncing
 
-- Update the migrator to check for edited-dates on posts, indicating a post has been updated and therefore should be updated on the Stoat server
+- Update the migrator to check for edited-dates on posts, indicating a post has been updated and therefore should be updated on the Fluxer server
 
 ### Feature Status
   - Initial migration: 
@@ -246,8 +234,8 @@ This is a high priority critical feature.
 
 ## Messages
 
-- Update contents, meaning if message text was changed or deleted, this change should be reflected in Stoat chat
-- Update deleted messages, meaning if one has been erased in Discord, it should be erased in Stoat.
+- Update contents, meaning if message text was changed or deleted, this change should be reflected in Fluxer chat
+- Update deleted messages, meaning if one has been erased in Discord, it should be erased in Fluxer.
 
 ### Feature Status
   - Initial migration: 
@@ -280,14 +268,14 @@ This is a high priority critical feature.
 
 1. For the project's use-case, there are very few threads which need to be migrated. Therefore, an intermediary migration option will be:
   - Create flattened-pseudo-threads. Architecture as follows:
-  - For every channel which contains any threads, create stoat-channel with the `original-channel-name + - + threads` format. Example: `#links` -> `#links-threads`
-  - Migrate a thread like a normal stoat-message, but group all message top lines including a unique thread-id + ##/### position counter.
-    - Thread-ids must have a derivable relationship, meaning a discord-thread must be able to match to a target stoat-pseudo-thread.
-      - It is not necessary for a stoat-pseudo-thread be able to look up its original discord-thread, though this might be useful for syncing both ways.
-      - IMPLEMENTATION APPROACH: Store the original discord-thread ID in the stoat-thread headers. 
-  - LIMITATIONS: Any new posts to the original source thread after initial migration-stage cannot be later-added to any stoat-
-  - FUTURE: When threading is eventually added to Stoat, these flattened-pseudo-threads can be converted into proper threads later.
-1. An attempt will be made, investigating how difficult it will be to implement threading within the backend of Stoat.
+  - For every channel which contains any threads, create fluxer-channel with the `original-channel-name + - + threads` format. Example: `#links` -> `#links-threads`
+  - Migrate a thread like a normal fluxer-message, but group all message top lines including a unique thread-id + ##/### position counter.
+    - Thread-ids must have a derivable relationship, meaning a discord-thread must be able to match to a target fluxer-pseudo-thread.
+      - It is not necessary for a fluxer-pseudo-thread be able to look up its original discord-thread, though this might be useful for syncing both ways.
+      - IMPLEMENTATION APPROACH: Store the original discord-thread ID in the fluxer-thread headers. 
+  - LIMITATIONS: Any new posts to the original source thread after initial migration-stage cannot be later-added to any fluxer-
+  - FUTURE: When threading is eventually added to Fluxer, these flattened-pseudo-threads can be converted into proper threads later.
+1. An attempt will be made, investigating how difficult it will be to implement threading within the backend of Fluxer.
 
 # Testing / Unit Tests
 

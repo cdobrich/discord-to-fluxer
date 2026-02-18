@@ -243,7 +243,7 @@ class MigrationTool:
 
             if emoji_data:
                 r_emoji = await self.fluxer_client.create_emoji(
-                    server_id=self.config.fluxer_server_id,
+                    guild_id=self.config.fluxer_server_id,
                     name=fluxer_emoji_name,
                     file_data=emoji_data
                 )

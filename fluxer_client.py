@@ -83,7 +83,7 @@ class FluxerClient:
             print(f"Warning: Discord channel type {discord_channel_data['type']} for channel '{discord_channel_data['name']}' not supported for direct creation on Fluxer (was not text or voice). Skipping.")
             return None
 
-        if not fluxer_channel_type:
+        if fluxer_channel_type is None:
             print(f"Error: Could not determine Fluxer channel type for Discord channel '{discord_channel_data['name']}' (type: {discord_channel_data['type']}). Skipping.")
             return None
 

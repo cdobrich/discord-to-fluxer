@@ -2,38 +2,13 @@
 
 Migrate from Discord Chat to [Fluxer](https://github.com/fluxerapp/fluxer) chat.
 
+# Running the Program
+
 You will need to create two bots (one for Discord and one for Fluxer), in order to run this program. This will require saving some info to files (guided steps below), running the setup script, then you may execute the full program.
 
+## Pre-requisites
 
-### FURTHER TODO
-
-The original Fluxer chat migrator could do an inital migration but not subsequent migrations. This glitch will need to be fixed. But after switching to using Fluxer.
-
-## Migration Support
-
-During the migration-proces, the data flow is from the origin Discord chat to target Fluxer server.
-
-Migration features include:
-- (from origin server to target Fluxer server) replicate all channels
-- (from origin server to target Fluxer server) import custom emojis
-- (from origin server to target Fluxer server) copy all prior messages in all channels, in chronological order of their creation, including attachment groups.
-  - Attachments are included and correctly grouped 
-  - Any Reply-to links are preserved, if possible, during copying all messages.
-- (from origin server to target Fluxer server) pinned messages on all channels should be similarly pinned on the target server.
-
-### Not Supported
-
-Threads or Threading of conversations: This is due to a limitation of the Fluxer architecture.
-
-#### Future Workarounds
-
-During the migration process, dedicated suffixed `-thread` channels could be created.
-
-## Version Support
-
-Tested with Python 3.12, but in theory should work for older versions of Python.
-
-# Running the Program
+Python 3.10 or later installed on your system.
 
 ## Discord Bot Setup
 
@@ -165,7 +140,7 @@ This program reads a `config.yaml` file, in its root program directory. This is 
 
 Open a command terminal at the location where you have `Discord-to-Fluxer` code files. Run:
 
-  sh setup.py
+    sh setup.py
   
 This will create a virtual python environment and install the program's dependency files.
 
@@ -173,8 +148,8 @@ This will create a virtual python environment and install the program's dependen
 
 Finally you are ready. To run the exporter, open a command terminal at the location where you have `Discord-to-Fluxer` code files. Run:
 
-  source .venv/bin/python
-  python main.py
+    source .venv/bin/python
+    python main.py
 
 
 # Developer Notes
@@ -208,6 +183,40 @@ If the emoji of the same name already exists on the target server, it will skip 
 Reply-to links are preserved, if possible, during the migration process.
 
 DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Fluxer message from that migration, the script also tracks the fluxer-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated fluxer-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new fluxer message that uses the fluxer-message-reply-to system to target the correct prior message.
+
+
+## Notes on Supported Migration
+
+During the migration-proces, the data flow is from the origin Discord chat to target Fluxer server.
+
+### DONE
+
+Migration features include:
+- (from origin server to target Fluxer server) replicate all channels
+- (from origin server to target Fluxer server) import custom emojis
+
+- (from origin server to target Fluxer server) pinned messages on all channels should be similarly pinned on the target server.
+
+### PENDING
+
+Waiting for the Fluxer.py library to update with attachment suport.
+
+- (from origin server to target Fluxer server) copy all prior messages in all channels, in chronological order of their creation, including attachment groups.
+  - Attachments are included and correctly grouped 
+  - Any Reply-to links are preserved, if possible, during copying all messages.
+
+### Not Supported
+
+Threads or Threading of conversations: This is due to a limitation of the Fluxer architecture.
+
+#### Future Workarounds
+
+During the migration process, dedicated suffixed `-thread` channels could be created.
+
+## Version Support
+
+Tested with Python 3.12, but in theory should work for older versions of Python.
+
 
 # TODO / Pending Tasks
 

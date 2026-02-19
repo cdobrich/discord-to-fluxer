@@ -82,12 +82,15 @@ async def test_start_unauthorized_error(mock_fluxer_api):
 
 @pytest.mark.asyncio
 async def test_start_generic_error(mock_fluxer_api):
-    client = FluxerClient("fake_token", "fake_guild_id")
-    
-    mock_fluxer_api['bot'].fetch_guild.side_effect = Exception("Boom")
+    with patch('fluxer_client.asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+        client = FluxerClient("fake_token", "fake_guild_id")
+        
+        mock_fluxer_api['bot'].fetch_guild.side_effect = Exception("Boom")
 
-    with pytest.raises(Exception, match="Boom"):
-        await client.start()
+        with pytest.raises(ConnectionError, match="Failed to connect to Fluxer API after multiple retries."):
+            await client.start()
+        
+        assert mock_sleep.call_count == 2
 
 @pytest.mark.asyncio
 async def test_close(mock_fluxer_api):

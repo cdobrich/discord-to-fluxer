@@ -25,42 +25,52 @@ class FluxerClient:
         self.fluxer_guild: Guild | None = None
 
     async def start(self):
-        """Connects to Fluxer and fetches the target guild's information."""
+        """Connects to Fluxer and fetches the target guild's information, with retries."""
         print(f"FluxerClient: Attempting to connect to Fluxer and fetch guild with ID: {self.fluxer_guild_id}...")
-        try:
-            # The fluxer_bot.start method handles the gateway connection.
-            # We'll manually manage the HTTP client for direct calls.
-            # For direct HTTP calls, we need to ensure the HTTPClient is initialized.
-            # The FluxerClientBase's start method handles HTTPClient initialization.
-            # However, we're not using the gateway for this client, only HTTP.
-            # So, we'll initialize the HTTP client directly.
-            self.fluxer_bot._http = HTTPClient(self.token)
-            await self.fluxer_bot._http._ensure_session() # Initialize HTTP client session
+        
+        self.fluxer_bot._http = HTTPClient(self.token)
+        max_retries = 3
+        retry_delay = 5  # seconds
 
-            self.fluxer_guild = await self.fluxer_bot.fetch_guild(self.fluxer_guild_id)
-            if not self.fluxer_guild:
-                print(f"FluxerClient: Error: Target Fluxer guild with ID {self.fluxer_guild_id} not found.")
-                raise ValueError(f"Target Fluxer guild {self.fluxer_guild_id} not found.")
-            print(f"FluxerClient: Successfully fetched Fluxer guild '{self.fluxer_guild.name}' (ID: {self.fluxer_guild.id}).")
+        for attempt in range(max_retries):
+            try:
+                print(f"FluxerClient: Connection attempt {attempt + 1}/{max_retries}...")
+                await self.fluxer_bot._http._ensure_session() # Initialize HTTP client session
 
-        except HTTPException as e:
-            print(f"FluxerClient: Caught HTTPException during guild fetch: Status={e.status}, Code={e.code}, Message={e.message}")
-            traceback.print_exc()
-            if e.status == 404:
-                print(f"FluxerClient: (Info) 'NotFound' error for guild ID {self.fluxer_guild_id}. This means the guild ID is likely incorrect or the bot is not a member of it, even if the token is valid.")
-                raise ValueError(f"Target Fluxer guild {self.fluxer_guild_id} not found or accessible by bot. Please check config.yaml and bot's guild membership/permissions.") from e
-            elif e.status == 401:
-                print(f"FluxerClient: (Critical) 'Unauthorized' error received from Fluxer for guild ID {self.fluxer_guild_id}.")
-                print("FluxerClient: This error indicates an invalid token or insufficient permissions.")
-                raise ValueError(f"Fluxer API returned 'Unauthorized' for guild ID {self.fluxer_guild_id}. Please double-check your bot token and permissions.") from e
+                self.fluxer_guild = await self.fluxer_bot.fetch_guild(self.fluxer_guild_id)
+                
+                if not self.fluxer_guild:
+                    print(f"FluxerClient: Error: Target Fluxer guild with ID {self.fluxer_guild_id} not found.")
+                    raise ValueError(f"Target Fluxer guild {self.fluxer_guild_id} not found.")
+                
+                print(f"FluxerClient: Successfully fetched Fluxer guild '{self.fluxer_guild.name}' (ID: {self.fluxer_guild.id}).")
+                return # Success
+
+            except HTTPException as e:
+                print(f"FluxerClient: Caught HTTPException during guild fetch: Status={e.status}, Code={e.code}, Message={e.message}")
+                if e.status == 404:
+                    print(f"FluxerClient: (Info) 'NotFound' error for guild ID {self.fluxer_guild_id}. This means the guild ID is likely incorrect or the bot is not a member of it, even if the token is valid.")
+                    raise ValueError(f"Target Fluxer guild {self.fluxer_guild_id} not found or accessible by bot. Please check config.yaml and bot's guild membership/permissions.") from e
+                elif e.status == 401:
+                    print(f"FluxerClient: (Critical) 'Unauthorized' error received from Fluxer for guild ID {self.fluxer_guild_id}.")
+                    print("FluxerClient: This error indicates an invalid token or insufficient permissions.")
+                    raise ValueError(f"Fluxer API returned 'Unauthorized' for guild ID {self.fluxer_guild_id}. Please double-check your bot token and permissions.") from e
+                
+                # For other HTTP errors (like 5xx server errors), we retry.
+                print(f"FluxerClient: A recoverable HTTP error occurred: {e}")
+
+            except Exception as e:
+                # This catches connection errors like 'Connection reset by peer'
+                print(f"FluxerClient: An unexpected connection error occurred: Type={type(e).__name__}, Message={e}")
+
+            if attempt < max_retries - 1:
+                print(f"FluxerClient: Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
             else:
-                print(f"FluxerClient: Other HTTPException: {e}")
-                raise
-        except Exception as e:
-            print(f"FluxerClient: An unexpected GENERAL error occurred fetching Fluxer guild: Type={type(e).__name__}, Message={e}")
-            print("FluxerClient: Printing full traceback for general error:")
-            traceback.print_exc()
-            raise
+                print(f"FluxerClient: All {max_retries} attempts failed. Could not connect to Fluxer.")
+                print("FluxerClient: Printing full traceback for the final error:")
+                traceback.print_exc()
+                raise ConnectionError("Failed to connect to Fluxer API after multiple retries.")
 
     async def close(self):
         """Closes the Fluxer client session."""

@@ -8,6 +8,10 @@ from fluxer.enums import ChannelType
 from fluxer.errors import HTTPException
 from fluxer.models import Channel, Guild, Message, Emoji
 
+# FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+API_TIMEOUT = 30.0
+UPLOAD_TIMEOUT = 60.0
+# FIXME / DEVCODE end
 
 class FluxerClient:
     """
@@ -65,7 +69,12 @@ class FluxerClient:
                 print(f"FluxerClient: Connection attempt {attempt + 1}/{max_retries}...")
                 await self.fluxer_bot._http._ensure_session() # Initialize HTTP client session
 
-                self.fluxer_guild = await self.fluxer_bot.fetch_guild(self.fluxer_guild_id)
+                # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+                # Add a timeout to the fetch_guild call to prevent indefinite hanging
+                self.fluxer_guild = await asyncio.wait_for(
+                    self.fluxer_bot.fetch_guild(self.fluxer_guild_id),
+                    timeout=API_TIMEOUT
+                )
                 
                 if not self.fluxer_guild:
                     print(f"FluxerClient: Error: Target Fluxer guild with ID {self.fluxer_guild_id} not found.")
@@ -73,6 +82,11 @@ class FluxerClient:
                 
                 print(f"FluxerClient: Successfully fetched Fluxer guild '{self.fluxer_guild.name}' (ID: {self.fluxer_guild.id}).")
                 return # Success
+
+            except asyncio.TimeoutError:
+                print("FluxerClient: Timeout during guild fetch. The API might be unresponsive or the connection is unstable.")
+                # This will fall through to the retry logic below
+            # FIXME / DEVCODE end
 
             except HTTPException as e:
                 print(f"FluxerClient: Caught HTTPException during guild fetch: Status={e.status}, Code={e.code}, Message={e.message}")
@@ -137,16 +151,24 @@ class FluxerClient:
 
         print(f"Fluxer: Creating channel '{discord_channel_data['name']}' (type: {fluxer_channel_type.name}) in guild {self.fluxer_guild.id}")
         try:
-            created_channel_data = await self.fluxer_bot._http.create_guild_channel(
-                guild_id=self.fluxer_guild.id,
-                name=discord_channel_data["name"],
-                type=fluxer_channel_type.value,
-                topic="", # Discord channels don't have descriptions, so default empty
-                nsfw=False # Default to False, can be updated later if needed
+            # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+            created_channel_data = await asyncio.wait_for(
+                self.fluxer_bot._http.create_guild_channel(
+                    guild_id=self.fluxer_guild.id,
+                    name=discord_channel_data["name"],
+                    type=fluxer_channel_type.value,
+                    topic="", # Discord channels don't have descriptions, so default empty
+                    nsfw=False # Default to False, can be updated later if needed
+                ),
+                timeout=API_TIMEOUT
             )
             created_channel = Channel.from_data(created_channel_data, self.fluxer_bot._http)
             print(f"Fluxer: Successfully created channel '{created_channel.name}' (ID: {created_channel.id}).")
             return created_channel
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout creating channel '{discord_channel_data['name']}'.")
+            return None
+        # FIXME / DEVCODE end
         except HTTPException as e:
             print(f"Error creating Fluxer channel '{discord_channel_data['name']}': Status={e.status}, Code={e.code}, Message={e.message}")
             traceback.print_exc()
@@ -167,7 +189,11 @@ class FluxerClient:
             return []
 
         try:
-            channels_data = await self.fluxer_bot._http.get_guild_channels(guild_id)
+            # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+            channels_data = await asyncio.wait_for(
+                self.fluxer_bot._http.get_guild_channels(guild_id),
+                timeout=API_TIMEOUT
+            )
             parsed_channels = []
             for channel in channels_data:
                 parsed_channels.append({
@@ -178,6 +204,10 @@ class FluxerClient:
                 })
             print(f"Fluxer: Successfully fetched {len(parsed_channels)} channels for guild {guild_id}.")
             return parsed_channels
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching channels for guild {guild_id}.")
+            return []
+        # FIXME / DEVCODE end
         except HTTPException as e:
             print(f"Fluxer: Error fetching channels for guild {guild_id}: Status={e.status}, Code={e.code}, Message={e.message}")
             if e.status == 401:
@@ -230,13 +260,23 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                message_data = await http_client.send_message(
-                    channel_id=channel_id,
-                    content=content,
-                    files=files_to_send if files_to_send else None
+                # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+                message_data = await asyncio.wait_for(
+                    http_client.send_message(
+                        channel_id=channel_id,
+                        content=content,
+                        files=files_to_send if files_to_send else None
+                    ),
+                    timeout=UPLOAD_TIMEOUT
                 )
                 print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {message_data.get('id')}")
                 return message_data
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout sending message to channel {channel_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
+                # FIXME / DEVCODE end
             except HTTPException as e:
                 print(f"Fluxer: Error sending message (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
                 if e.status == 401:
@@ -282,13 +322,23 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                await self.fluxer_bot._http.edit_message(
-                    channel_id=channel_id,
-                    message_id=message_id,
-                    content=new_content
+                # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+                await asyncio.wait_for(
+                    self.fluxer_bot._http.edit_message(
+                        channel_id=channel_id,
+                        message_id=message_id,
+                        content=new_content
+                    ),
+                    timeout=API_TIMEOUT
                 )
                 print(f"Fluxer: Successfully edited message {message_id} in channel {channel_id}.")
                 return True
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout editing message {message_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
+                # FIXME / DEVCODE end
             except HTTPException as e:
                 print(f"Fluxer: Error editing message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
                 if e.status == 401:
@@ -330,7 +380,11 @@ class FluxerClient:
             return []
 
         try:
-            emojis_data = await self.fluxer_bot._http.get_guild_emojis(guild_id)
+            # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+            emojis_data = await asyncio.wait_for(
+                self.fluxer_bot._http.get_guild_emojis(guild_id),
+                timeout=API_TIMEOUT
+            )
             parsed_emojis = []
             for emoji in emojis_data:
                 parsed_emojis.append({
@@ -339,6 +393,10 @@ class FluxerClient:
                 })
             print(f"Fluxer: Successfully fetched {len(parsed_emojis)} existing emojis for guild {guild_id}.")
             return parsed_emojis
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching emojis for guild {guild_id}.")
+            return []
+        # FIXME / DEVCODE end
         except HTTPException as e:
             print(f"Fluxer: Error fetching existing emojis for guild {guild_id}: Status={e.status}, Code={e.code}, Message={e.message}")
             return []
@@ -365,13 +423,21 @@ class FluxerClient:
             return None
 
         try:
-            emoji_data = await self.fluxer_bot._http.create_guild_emoji(
-                guild_id=guild_id,
-                name=name,
-                image=file_data
+            # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+            emoji_data = await asyncio.wait_for(
+                self.fluxer_bot._http.create_guild_emoji(
+                    guild_id=guild_id,
+                    name=name,
+                    image=file_data
+                ),
+                timeout=UPLOAD_TIMEOUT
             )
             print(f"Fluxer: Successfully created emoji '{name}' with ID {emoji_data['id']}.")
             return {"id": str(emoji_data['id']), "name": emoji_data['name']}
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout creating emoji '{name}'.")
+            return None
+        # FIXME / DEVCODE end
         except HTTPException as e:
             print(f"Fluxer: Error creating emoji '{name}' (HTTP {e.status}): {e.message}")
             if e.status == 401:
@@ -433,9 +499,19 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                await self.fluxer_bot._http.delete_message(channel_id=channel_id, message_id=message_id)
+                # FIXME / DEVCODE start: add timeout and catch exceptions to fall through to next logic
+                await asyncio.wait_for(
+                    self.fluxer_bot._http.delete_message(channel_id=channel_id, message_id=message_id),
+                    timeout=API_TIMEOUT
+                )
                 print(f"Fluxer: Successfully deleted message {message_id} in channel {channel_id}.")
                 return True
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout deleting message {message_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
+                # FIXME / DEVCODE end
             except HTTPException as e:
                 print(f"Fluxer: Error deleting message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
                 if e.status == 401:

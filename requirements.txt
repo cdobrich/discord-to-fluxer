@@ -3,4 +3,4 @@ discord==2.3.2
 pytest==8.4.1
 pytest-asyncio==1.1.0
 PyYAML==6.0.2
-fluxer.py==0.2.0
+fluxer.py==0.3.1

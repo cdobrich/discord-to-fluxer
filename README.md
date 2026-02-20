@@ -171,7 +171,7 @@ The current asynchronous design, combined with the logic of fetching messages `a
 # FEATURE STATUS for Migration
 
 ## Channel Creation
-- Initial migration: UNTESTED
+- Initial migration: DONE
 - Updated changes migrated after initial migration: UNTESTED
 
 ## Emojis
@@ -181,11 +181,11 @@ The current asynchronous design, combined with the logic of fetching messages `a
 
 The program will migrate custom emoji from Discord servers to target Fluxer servers. 
 
-If the emoji of the same name already exists on the target server, it will skip uploading. (In order to avoid duplciation.) It does not check the image contents, only the emoji name. So for example, if migrating 'kek' from Discord, but 'kek' already exists on Fluxer, this emoji will be skipped.
+If the emoji of the same name already exists on the target server, it will skip uploading. (In order to avoid duplication.) It does not check the image contents, only the emoji name. So for example, if migrating 'kek' from Discord, but 'kek' already exists on Fluxer, this emoji will be skipped.
 
 ## Messages to Channels & Message Attachment
 
-- Initial migration: UNTESTED
+- Initial migration: DONE
 - Updated changes migrated after initial migration: UNTESTED
 
 Recently received Fluxer.py library to support with messages with attachments.
@@ -202,7 +202,7 @@ Recently received Fluxer.py library to support with messages with attachments.
 It is possible to overrun the maximum message length when exporting a non-masqueraded message. Scenario: when export-bot will attempt to prepend a username to the delivered message.
 
 Example:
-    (sent by username Spritz) `That's a good thought` would become `Spritz: that's a good message`
+    (sent by username Spritz) `That's a good thought` would become `Spritz: that's a good thought`
 
 This edge-case needs to be handled.
 
@@ -276,3 +276,11 @@ Run the following:
     pytest -q --disable-warnings
 
 There are many warnings from the Discord sub-libraries, which is why we suppress them.
+
+## More Testing to Add
+
+- make sure to export first post in channel
+- reply-to message preservation
+- avoid duplicating existing messages
+- avoid duplicating existing emoji reactions
+- add total number of messages checking during export? 

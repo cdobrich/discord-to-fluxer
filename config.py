@@ -35,6 +35,7 @@ class AppConfig:
         self.fluxer_server_id = str(data['fluxer']['server_id'])
         self.delay_between_messages_seconds = data['delays'].get('between_messages_seconds', 0.5)
         self.delay_between_channels_seconds = data['delays'].get('between_channels_seconds', 5.0)
+        self.user_mappings = data.get('user_mappings', {})
 
 
 def load_config(config_path=CONFIG_FILE):
@@ -47,7 +48,7 @@ def load_config(config_path=CONFIG_FILE):
     except FileNotFoundError:
         print(f"Error: Configuration file '{config_path}' not found.")
         print("Please create a 'config.yaml' file with the following structure:")
-        print("""
+        print('''
 discord:
   token_file: "discord_token.token"
   guild_id: "YOUR_DISCORD_SERVER_ID"
@@ -57,7 +58,11 @@ fluxer:
 delays:
   between_messages_seconds: 0.5
   between_channels_seconds: 5.0
-        """)
+user_mappings:
+  "discord_username":
+    fluxer_username: "your_fluxer_username"
+    fluxer_auth_key: "your_fluxer_auth_key"
+        ''')
         raise
     except yaml.YAMLError as e:
         print(f"Error parsing YAML configuration file '{config_path}': {e}")

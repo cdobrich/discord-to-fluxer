@@ -183,7 +183,7 @@ The program will migrate custom emoji from Discord servers to target Fluxer serv
 
 If the emoji of the same name already exists on the target server, it will skip uploading. (In order to avoid duplciation.) It does not check the image contents, only the emoji name. So for example, if migrating 'kek' from Discord, but 'kek' already exists on Fluxer, this emoji will be skipped.
 
-## Messags to Channels & Message Attachment
+## Messages to Channels & Message Attachment
 
 - Initial migration: UNTESTED
 - Updated changes migrated after initial migration: UNTESTED
@@ -197,9 +197,23 @@ Recently received Fluxer.py library to support with messages with attachments.
 - Update contents, meaning if message text was changed or deleted, this change should be reflected in Fluxer chat
 - Update deleted messages, meaning if one has been erased in Discord, it should be erased in Fluxer.
 
+### Maximum Message Length Handling
+
+It is possible to overrun the maximum message length when exporting a non-masqueraded message. Scenario: when export-bot will attempt to prepend a username to the delivered message.
+
+Example:
+    (sent by username Spritz) `That's a good thought` would become `Spritz: that's a good message`
+
+This edge-case needs to be handled.
+
+## Messages to Channels & Message Attachment (Masquerading)
+
+Feature to masquerade as origin server user when exporting message to target server.
+
+- Initial migration: UNTESTED
+- Updated changes migrated after initial migration: UNTESTED
 
 ## Pinned Messages / Pins
-
 
 - Initial migration: UNTESTED
 - Updated changes migrated after initial migration: UNTESTED

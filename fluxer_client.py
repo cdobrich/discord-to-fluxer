@@ -14,15 +14,43 @@ class FluxerClient:
     A client for interacting with the Fluxer API using fluxer.py.
     Uses fluxer.client.Client for all interactions.
     """
-    def __init__(self, token: str, fluxer_guild_id: str):
+    def __init__(self, token: str, fluxer_guild_id: str, user_mappings: dict = None):
         self.token = token
         self.fluxer_guild_id = fluxer_guild_id
+        self.user_mappings = user_mappings or {}
         # Sanitize token for printing to avoid exposing full token in logs.
         sanitized_token = '*' * (len(token) - 4) + token[-4:] if token else 'None'
         print(f"FluxerClient initialized with token (last 4 chars): {sanitized_token}")
         self.fluxer_bot = FluxerClientBase() # Using the base Client for direct API calls
 
         self.fluxer_guild: Guild | None = None
+        self._masquerade_https = {} # Cache for masquerade HTTP clients
+
+    async def _get_masquerade_http(self, username: str) -> HTTPClient | None:
+        """
+        Returns an HTTPClient for a masqueraded user if a mapping exists.
+        """
+        if not username or username not in self.user_mappings:
+            return None
+
+        if username in self._masquerade_https:
+            return self._masquerade_https[username]
+
+        mapping = self.user_mappings[username]
+        auth_key = mapping.get('fluxer_auth_key')
+        if not auth_key:
+            print(f"Warning: No auth key found for mapped user '{username}'.")
+            return None
+
+        print(f"FluxerClient: initializing masquerade client for '{username}'...")
+        http_client = HTTPClient(auth_key)
+        try:
+            await http_client._ensure_session()
+            self._masquerade_https[username] = http_client
+            return http_client
+        except Exception as e:
+            print(f"Error initializing masquerade client for '{username}': {e}")
+            return None
 
     async def start(self):
         """Connects to Fluxer and fetches the target guild's information, with retries."""
@@ -76,6 +104,12 @@ class FluxerClient:
         """Closes the Fluxer client session."""
         print("FluxerClient closing.")
         await self.fluxer_bot.close()
+        # Close masquerade clients
+        for username, client in self._masquerade_https.items():
+            print(f"Closing masquerade client for {username}...")
+            if hasattr(client, '_session') and client._session and not client._session.closed:
+                await client._session.close()
+        self._masquerade_https.clear()
 
     async def _create_fluxer_channel_from_discord(self, discord_channel_data: dict[str, Any]) -> Channel | None:
         """
@@ -163,13 +197,25 @@ class FluxerClient:
         """
         return await self.get_server_channels(guild_id)
 
-    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3) -> dict[str, Any] | None:
+    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3, author_name: str | None = None) -> dict[str, Any] | None:
         """
         Sends a message with optional attachments to a Fluxer channel.
         Attachments should be a list of dicts, each with 'filename' and 'data' (bytes).
         """
+        http_client = self.fluxer_bot._http
+        
+        if author_name:
+            masquerade_client = await self._get_masquerade_http(author_name)
+            if masquerade_client:
+                http_client = masquerade_client
+                print(f"Fluxer: Sending message as masqueraded user '{author_name}'.")
+            else:
+                # Prepend username if no masquerade found
+                content = f"{author_name}: {content}"
+                print(f"Fluxer: Sending message as bot (prepended '{author_name}: ').")
+
         print(f"Fluxer: Attempting to send message to channel {channel_id} with content: {content[:50]}...")
-        if not self.fluxer_bot._http:
+        if not http_client:
             print("Error: Fluxer HTTP client not initialized. Cannot send message.")
             return None
 
@@ -184,7 +230,7 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                message_data = await self.fluxer_bot._http.send_message(
+                message_data = await http_client.send_message(
                     channel_id=channel_id,
                     content=content,
                     files=files_to_send if files_to_send else None

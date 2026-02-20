@@ -18,7 +18,7 @@ class MigrationTool:
     def __init__(self, config: AppConfig):
         self.config = config
         self.discord_client = DiscordClient(config.discord_token)
-        self.fluxer_client = FluxerClient(config.fluxer_token, config.fluxer_server_id)
+        self.fluxer_client = FluxerClient(config.fluxer_token, config.fluxer_server_id, config.user_mappings)
         self.db = StateManager(STATE_DB_FILE)
         self.fluxer_emoji_map = {}
 
@@ -329,12 +329,11 @@ class MigrationTool:
                             for attachment in d_message['attachments']:
                                 file_data = await self.discord_client.download_attachment(attachment['url'])
                                 if file_data:
-                                    uploaded_file = await self.fluxer_client.upload_attachment(file_data, attachment['filename'], tag="attachments")
-                                    if uploaded_file:
-                                        fluxer_attachments.append(uploaded_file['id'])
-                                        print(f"      Uploaded attachment {attachment['filename']} to Fluxer with ID {uploaded_file['id']}")
-                                    else:
-                                        print(f"      Warning: Failed to upload attachment {attachment['filename']}.")
+                                    fluxer_attachments.append({
+                                        "filename": attachment['filename'],
+                                        "data": file_data
+                                    })
+                                    print(f"      Downloaded attachment {attachment['filename']} from Discord.")
                                 else:
                                     print(f"      Warning: Failed to download attachment {attachment['filename']} from Discord.")
 
@@ -360,13 +359,6 @@ class MigrationTool:
                                     print(f"      Skipping Discord message {d_message['id']} as it has no content, no successful attachments, and no reactions.")
                                     continue
 
-                            # Always include author and timestamp for context
-                            message_content_for_fluxer = f"**{author_name}** at {d_message['timestamp']}:\n{current_discord_content}"
-
-                            # Use masquerade if desired for a more authentic look
-                            masquerade_name = d_message['author']['username']
-                            masquerade_avatar = d_message['author']['avatar_url']
-
                             # --- Handle Message Edits or New Messages ---
                             db_entry = self.db.get_message_details_by_discord_id(d_message['id']) # Re-fetch to ensure current state
                             if db_entry: # Message already exists in our database, check for edits
@@ -377,6 +369,10 @@ class MigrationTool:
                                 # Compare current Discord state with stored state
                                 if current_discord_content != stored_content or set(current_discord_attachment_urls) != set(stored_attachments):
                                     print(f"      Discord message {d_message['id']} has been edited. Updating Fluxer message {stored_fluxer_id}...")
+                                    
+                                    # Prepare content for edit
+                                    message_content_for_fluxer = f"**{author_name}** at {d_message['timestamp']}:\n{current_discord_content}"
+
                                     edit_success = await self.fluxer_client.edit_message(
                                         channel_id=fluxer_channel_id,
                                         message_id=stored_fluxer_id,
@@ -401,11 +397,9 @@ class MigrationTool:
                             else: # New message
                                 r_message = await self.fluxer_client.send_message(
                                     channel_id=fluxer_channel_id,
-                                    content=message_content_for_fluxer,
+                                    content=current_discord_content,
                                     attachments=fluxer_attachments,
-                                    reply_to_id=fluxer_reply_to_id,
-                                    masquerade_name=masquerade_name,
-                                    masquerade_avatar=masquerade_avatar
+                                    author_name=author_name
                                 )
 
                                 if r_message:
@@ -523,18 +517,20 @@ class MigrationTool:
                         for att in d_msg['attachments']:
                             file_data = await self.discord_client.download_attachment(att['url'])
                             if file_data:
-                                uploaded_file = await self.fluxer_client.upload_attachment(file_data, att['filename'], tag="attachments")
-                                if uploaded_file:
-                                    new_fluxer_attachments.append(uploaded_file['id'])
-                                    print(f"    Uploaded attachment {att['filename']} -> Fluxer {uploaded_file['id']}")
-                                else:
-                                    print(f"    Warning: Failed to upload attachment {att['filename']} during edit handling.")
+                                new_fluxer_attachments.append({
+                                    "filename": att['filename'],
+                                    "data": file_data
+                                })
+                                print(f"    Downloaded attachment {att['filename']} for edit.")
                             else:
                                 print(f"    Warning: Failed to download attachment {att['filename']} during edit handling.")
                         author_name = d_msg['author']['username']
                         if d_msg['author'].get('discriminator') and d_msg['author']['discriminator'] != "0":
                             author_name += f"#{d_msg['author']['discriminator']}"
+                        
+                        # For edits, we keep the original format with timestamp for context.
                         message_content_for_fluxer = f"**{author_name}** at {d_msg['timestamp']}:\n{current_content}"
+                        
                         edit_success = await self.fluxer_client.edit_message(
                             channel_id=fluxer_channel_id,
                             message_id=fluxer_id_in_db,

@@ -269,7 +269,8 @@ class FluxerClient:
                     http_client.send_message(
                         channel_id=channel_id,
                         content=content,
-                        files=files_to_send if files_to_send else None
+                        files=files_to_send if files_to_send else None,
+                        replies=replies_payload
                     ),
                     timeout=UPLOAD_TIMEOUT
                 )

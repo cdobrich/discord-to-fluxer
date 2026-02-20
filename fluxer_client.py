@@ -227,7 +227,7 @@ class FluxerClient:
         """
         return await self.get_server_channels(guild_id)
 
-    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3, author_name: str | None = None) -> dict[str, Any] | None:
+    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3, author_name: str | None = None, reply_to_id: str | None = None) -> dict[str, Any] | None:
         """
         Sends a message with optional attachments to a Fluxer channel.
         Attachments should be a list of dicts, each with 'filename' and 'data' (bytes).
@@ -257,6 +257,10 @@ class FluxerClient:
                     "data": attachment["data"]
                 })
             print(f"Fluxer: Preparing to send {len(files_to_send)} attachments.")
+
+        replies_payload = None
+        if reply_to_id:
+            replies_payload = [{"id": reply_to_id, "mention": False}]
 
         for attempt in range(max_retries):
             try:

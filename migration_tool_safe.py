@@ -399,7 +399,8 @@ class MigrationTool:
                                     channel_id=fluxer_channel_id,
                                     content=current_discord_content,
                                     attachments=fluxer_attachments,
-                                    author_name=author_name
+                                    author_name=author_name,
+                                    reply_to_id=fluxer_reply_to_id
                                 )
 
                                 if r_message:

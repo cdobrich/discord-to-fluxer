@@ -1,9 +1,30 @@
+# --- Discord Bot Configuration ---
 discord:
-    token_file: "discord_token.token"
-    guild_id: "00000000000000000000"
+  token_file: "discord_token.token"
+  guild_id: "YOUR_DISCORD_SERVER_ID"
+
+# --- Fluxer Bot Configuration ---
 fluxer:
-    token_file: "fluxer_token.token"
-    server_id: "1234567890ABCDEFGH"
+  token_file: "fluxer_token.token"
+  server_id: "YOUR_FLUXER_SERVER_ID"
+
+# --- Migration Delays ---
 delays:
-    between_messages_seconds: 0.5
-    between_channels_seconds: 5.0
+  between_messages_seconds: 0.5
+  between_channels_seconds: 5.0
+
+# --- User Masquerade Mappings ---
+# This section maps Discord users to Fluxer accounts.
+# The bot will post as the specified Fluxer user when it sees a message
+# from the corresponding Discord user.
+user_mappings:
+  "Bob#1111":
+    fluxer_username: "BobsFluxerAccount"
+    fluxer_auth_key: "auth_key_for_bob_goes_here"
+
+  "Alice#2345":
+    fluxer_username: "AliceOnFluxer"
+    fluxer_auth_key: "auth_key_for_alice_goes_here"
+
+# If a user is not in this mapping, the bot will post their messages
+# prepended with their Discord username, like "OtherUser#5678: Hello!".

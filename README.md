@@ -73,6 +73,7 @@ To enable the migration program to interact with your Fluxer server, create a Fl
     * Still on the "Application" tab, scroll down to the "OAuth2 URL Builder" section.
     * Select `bot' checkbox. A new section titled **"BOT PERMISSIONS"** will appear. In this section, select the following permissions:
       * `Manage Channels`
+      * `Create Emoji & Stickers`
       * `Manage Emoji & Stickers`
       * `View Channel`
       * `Send Messages`

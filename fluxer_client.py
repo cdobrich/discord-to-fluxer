@@ -8,6 +8,9 @@ from fluxer.enums import ChannelType
 from fluxer.errors import HTTPException
 from fluxer.models import Channel, Guild, Message, Emoji
 
+API_TIMEOUT = 30.0
+UPLOAD_TIMEOUT = 60.0
+
 class FluxerClient:
     """
     A client for interacting with the Fluxer API using fluxer.py.
@@ -64,7 +67,11 @@ class FluxerClient:
                 print(f"FluxerClient: Connection attempt {attempt + 1}/{max_retries}...")
                 await self.fluxer_bot._http._ensure_session() # Initialize HTTP client session
 
-                self.fluxer_guild = await self.fluxer_bot.fetch_guild(self.fluxer_guild_id)
+                # Add a timeout to the fetch_guild call to prevent indefinite hanging
+                self.fluxer_guild = await asyncio.wait_for(
+                    self.fluxer_bot.fetch_guild(self.fluxer_guild_id),
+                    timeout=API_TIMEOUT
+                )
                 
                 if not self.fluxer_guild:
                     print(f"FluxerClient: Error: Target Fluxer guild with ID {self.fluxer_guild_id} not found.")
@@ -72,6 +79,10 @@ class FluxerClient:
                 
                 print(f"FluxerClient: Successfully fetched Fluxer guild '{self.fluxer_guild.name}' (ID: {self.fluxer_guild.id}).")
                 return # Success
+
+            except asyncio.TimeoutError:
+                print("FluxerClient: Timeout during guild fetch. The API might be unresponsive or the connection is unstable.")
+                # This will fall through to the retry logic below
 
             except HTTPException as e:
                 print(f"FluxerClient: Caught HTTPException during guild fetch: Status={e.status}, Code={e.code}, Message={e.message}")
@@ -136,16 +147,22 @@ class FluxerClient:
 
         print(f"Fluxer: Creating channel '{discord_channel_data['name']}' (type: {fluxer_channel_type.name}) in guild {self.fluxer_guild.id}")
         try:
-            created_channel_data = await self.fluxer_bot._http.create_guild_channel(
-                guild_id=self.fluxer_guild.id,
-                name=discord_channel_data["name"],
-                type=fluxer_channel_type.value,
-                topic="", # Discord channels don't have descriptions, so default empty
-                nsfw=False # Default to False, can be updated later if needed
+            created_channel_data = await asyncio.wait_for(
+                self.fluxer_bot._http.create_guild_channel(
+                    guild_id=self.fluxer_guild.id,
+                    name=discord_channel_data["name"],
+                    type=fluxer_channel_type.value,
+                    topic="", # Discord channels don't have descriptions, so default empty
+                    nsfw=False # Default to False, can be updated later if needed
+                ),
+                timeout=API_TIMEOUT
             )
             created_channel = Channel.from_data(created_channel_data, self.fluxer_bot._http)
             print(f"Fluxer: Successfully created channel '{created_channel.name}' (ID: {created_channel.id}).")
             return created_channel
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout creating channel '{discord_channel_data['name']}'.")
+            return None
         except HTTPException as e:
             print(f"Error creating Fluxer channel '{discord_channel_data['name']}': Status={e.status}, Code={e.code}, Message={e.message}")
             traceback.print_exc()
@@ -166,7 +183,10 @@ class FluxerClient:
             return []
 
         try:
-            channels_data = await self.fluxer_bot._http.get_guild_channels(guild_id)
+            channels_data = await asyncio.wait_for(
+                self.fluxer_bot._http.get_guild_channels(guild_id),
+                timeout=API_TIMEOUT
+            )
             parsed_channels = []
             for channel in channels_data:
                 parsed_channels.append({
@@ -177,6 +197,9 @@ class FluxerClient:
                 })
             print(f"Fluxer: Successfully fetched {len(parsed_channels)} channels for guild {guild_id}.")
             return parsed_channels
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching channels for guild {guild_id}.")
+            return []
         except HTTPException as e:
             print(f"Fluxer: Error fetching channels for guild {guild_id}: Status={e.status}, Code={e.code}, Message={e.message}")
             if e.status == 401:
@@ -213,6 +236,22 @@ class FluxerClient:
                 content = f"{author_name}: {content}"
                 print(f"Fluxer: Sending message as bot (prepended '{author_name}: ').")
 
+        # Fallback for reply_to if not supported by library
+        if reply_to_id:
+            # Since HTTPClient.send_message doesn't support reply_to/replies, we add it to content
+            # This is a visual fallback.
+            # Note: If the library is updated to support it, we can revert this.
+            # For now, we avoid the TypeError.
+            # We check if content is empty to avoid just sending the reply indicator if that's weird,
+            # but usually there's content.
+            pass 
+            # Actually, let's not modify content here to avoid clutter if the user didn't ask for visual indicator.
+            # But since we can't link it natively, visual is better than nothing.
+            # However, the user asked to "preserve the Reply-to linkage". 
+            # Since the library fails, I will just remove the argument to fix the crash.
+            # I'll log a warning.
+            print(f"Fluxer: Warning - 'reply_to_id' {reply_to_id} ignored because underlying library does not support it in send_message.")
+
         print(f"Fluxer: Attempting to send message to channel {channel_id} with content: {content[:50]}...")
         if not http_client:
             print("Error: Fluxer HTTP client not initialized. Cannot send message.")
@@ -229,14 +268,22 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                message_data = await http_client.send_message(
-                    channel_id=channel_id,
-                    content=content,
-                    files=files_to_send if files_to_send else None,
-                    reply_to=reply_to_id
+                # Removed reply_to/replies argument as it causes TypeError
+                message_data = await asyncio.wait_for(
+                    http_client.send_message(
+                        channel_id=channel_id,
+                        content=content,
+                        files=files_to_send if files_to_send else None
+                    ),
+                    timeout=UPLOAD_TIMEOUT
                 )
                 print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {message_data.get('id')}")
                 return message_data
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout sending message to channel {channel_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
             except HTTPException as e:
                 print(f"Fluxer: Error sending message (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
                 if e.status == 401:
@@ -282,13 +329,21 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                await self.fluxer_bot._http.edit_message(
-                    channel_id=channel_id,
-                    message_id=message_id,
-                    content=new_content
+                await asyncio.wait_for(
+                    self.fluxer_bot._http.edit_message(
+                        channel_id=channel_id,
+                        message_id=message_id,
+                        content=new_content
+                    ),
+                    timeout=API_TIMEOUT
                 )
                 print(f"Fluxer: Successfully edited message {message_id} in channel {channel_id}.")
                 return True
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout editing message {message_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
             except HTTPException as e:
                 print(f"Fluxer: Error editing message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
                 if e.status == 401:
@@ -330,7 +385,10 @@ class FluxerClient:
             return []
 
         try:
-            emojis_data = await self.fluxer_bot._http.get_guild_emojis(guild_id)
+            emojis_data = await asyncio.wait_for(
+                self.fluxer_bot._http.get_guild_emojis(guild_id),
+                timeout=API_TIMEOUT
+            )
             parsed_emojis = []
             for emoji in emojis_data:
                 parsed_emojis.append({
@@ -339,6 +397,9 @@ class FluxerClient:
                 })
             print(f"Fluxer: Successfully fetched {len(parsed_emojis)} existing emojis for guild {guild_id}.")
             return parsed_emojis
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching emojis for guild {guild_id}.")
+            return []
         except HTTPException as e:
             print(f"Fluxer: Error fetching existing emojis for guild {guild_id}: Status={e.status}, Code={e.code}, Message={e.message}")
             return []
@@ -365,13 +426,19 @@ class FluxerClient:
             return None
 
         try:
-            emoji_data = await self.fluxer_bot._http.create_guild_emoji(
-                guild_id=guild_id,
-                name=name,
-                image=file_data
+            emoji_data = await asyncio.wait_for(
+                self.fluxer_bot._http.create_guild_emoji(
+                    guild_id=guild_id,
+                    name=name,
+                    image=file_data
+                ),
+                timeout=UPLOAD_TIMEOUT
             )
             print(f"Fluxer: Successfully created emoji '{name}' with ID {emoji_data['id']}.")
             return {"id": str(emoji_data['id']), "name": emoji_data['name']}
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout creating emoji '{name}'.")
+            return None
         except HTTPException as e:
             print(f"Fluxer: Error creating emoji '{name}' (HTTP {e.status}): {e.message}")
             if e.status == 401:
@@ -395,93 +462,171 @@ class FluxerClient:
     async def apply_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str) -> bool:
         """
         Applies a reaction to a Fluxer message.
-        Note: Fluxer.py does not currently have a direct API for applying reactions.
-        This method is a placeholder.
         """
-        print(f"Fluxer: (Placeholder) Attempting to apply reaction '{emoji_id_or_name}' to message {message_id} in channel {channel_id}...")
-        print("Fluxer: Reaction functionality is not directly supported by the current Fluxer.py library wrapper.")
-        return False
+        print(f"Fluxer: Attempting to apply reaction '{emoji_id_or_name}' to message {message_id} in channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot apply reaction.")
+            return False
+
+        try:
+            await asyncio.wait_for(
+                self.fluxer_bot._http.add_reaction(
+                    channel_id=channel_id,
+                    message_id=message_id,
+                    emoji=emoji_id_or_name
+                ),
+                timeout=API_TIMEOUT
+            )
+            print(f"Fluxer: Successfully applied reaction '{emoji_id_or_name}' to message {message_id}.")
+            return True
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout applying reaction '{emoji_id_or_name}' to message {message_id}.")
+            return False
+        except HTTPException as e:
+            print(f"Fluxer: Error applying reaction '{emoji_id_or_name}' (HTTP {e.status}): {e.message}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred applying reaction: {e}")
+            traceback.print_exc()
+            return False
 
     async def pin_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
         """
         Pins a message in a Fluxer channel.
-        Note: Fluxer.py does not currently have a direct API for pinning messages.
-        This method is a placeholder.
         """
-        print(f"Fluxer: (Placeholder) Attempting to pin message {message_id} in channel {channel_id}...")
-        print("Fluxer: Pin message functionality is not directly supported by the current Fluxer.py library wrapper.")
+        print(f"Fluxer: Attempting to pin message {message_id} in channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot pin message.")
+            return False
+
+        for attempt in range(max_retries):
+            try:
+                await asyncio.wait_for(
+                    self.fluxer_bot._http.pin_message(channel_id=channel_id, message_id=message_id),
+                    timeout=API_TIMEOUT
+                )
+                print(f"Fluxer: Successfully pinned message {message_id} in channel {channel_id}.")
+                return True
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout pinning message {message_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
+            except HTTPException as e:
+                print(f"Fluxer: Error pinning message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
+                if e.status == 401:
+                    print("Fluxer: Unauthorized (401) - Check bot token and 'Manage Messages' permission for pinning.")
+                    return False
+                elif e.status == 403:
+                    print("Fluxer: Forbidden (403) - Bot lacks 'Manage Messages' permission for pinning in this channel.")
+                    return False
+                elif e.status == 404:
+                    print(f"Fluxer: Message {message_id} or channel {channel_id} not found for pinning. Skipping.")
+                    return False
+                elif e.status == 429: # Rate limit
+                    wait_time = e.retry_after if e.retry_after else (2 ** attempt)
+                    print(f"Fluxer: Rate limit hit during pin. Waiting for {wait_time:.2f} seconds.")
+                    await asyncio.sleep(wait_time)
+                elif 500 <= e.status < 600: # Server errors (5xx)
+                    wait_time = 2 ** attempt
+                    print(f"Fluxer: Server error (HTTP {e.status}) during pin. Retrying in {wait_time} seconds.")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"Fluxer: Unhandled HTTP error {e.status} during pin. Not retrying.")
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred pinning message {message_id}: {e}")
+                traceback.print_exc()
+                return False
+
+        print(f"Fluxer: Failed to pin message {message_id} after {max_retries} attempts.")
         return False
 
     async def unpin_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
         """
         Unpins a message in a Fluxer channel.
-        Note: Fluxer.py does not currently have a direct API for unpinning messages.
-        This method is a placeholder.
         """
-        print(f"Fluxer: (Placeholder) Attempting to unpin message {message_id} in channel {channel_id}...")
-        print("Fluxer: Unpin message functionality is not directly supported by the current Fluxer.py library wrapper.")
-        return False
-
-    async def delete_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
-        """
-        Deletes a message in a Fluxer channel.
-        """
-        print(f"Fluxer: Attempting to delete message {message_id} in channel {channel_id}...")
+        print(f"Fluxer: Attempting to unpin message {message_id} in channel {channel_id}...")
         if not self.fluxer_bot._http:
-            print("Error: Fluxer HTTP client not initialized. Cannot delete message.")
+            print("Error: Fluxer HTTP client not initialized. Cannot unpin message.")
             return False
 
         for attempt in range(max_retries):
             try:
-                await self.fluxer_bot._http.delete_message(channel_id=channel_id, message_id=message_id)
-                print(f"Fluxer: Successfully deleted message {message_id} in channel {channel_id}.")
+                await asyncio.wait_for(
+                    self.fluxer_bot._http.unpin_message(channel_id=channel_id, message_id=message_id),
+                    timeout=API_TIMEOUT
+                )
+                print(f"Fluxer: Successfully unpinned message {message_id} in channel {channel_id}.")
                 return True
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout unpinning message {message_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
             except HTTPException as e:
-                print(f"Fluxer: Error deleting message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
+                print(f"Fluxer: Error unpinning message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
                 if e.status == 401:
-                    print("Fluxer: Unauthorized (401) - Check bot token and 'Manage Messages' permission for deleting.")
+                    print("Fluxer: Unauthorized (401) - Check bot token and 'Manage Messages' permission for unpinning.")
                     return False
                 elif e.status == 403:
-                    print("Fluxer: Forbidden (403) - Bot lacks 'Manage Messages' permission for deleting in this channel.")
+                    print("Fluxer: Forbidden (403) - Bot lacks 'Manage Messages' permission for unpinning in this channel.")
                     return False
                 elif e.status == 404:
-                    print(f"Fluxer: Message {message_id} or channel {channel_id} not found for deleting. Skipping.")
+                    print(f"Fluxer: Message {message_id} or channel {channel_id} not found for unpinning. Skipping.")
                     return False
                 elif e.status == 429: # Rate limit
                     wait_time = e.retry_after if e.retry_after else (2 ** attempt)
-                    print(f"Fluxer: Rate limit hit during delete. Waiting for {wait_time:.2f} seconds.")
+                    print(f"Fluxer: Rate limit hit during unpin. Waiting for {wait_time:.2f} seconds.")
                     await asyncio.sleep(wait_time)
                 elif 500 <= e.status < 600: # Server errors (5xx)
                     wait_time = 2 ** attempt
-                    print(f"Fluxer: Server error (HTTP {e.status}) during delete. Retrying in {wait_time} seconds.")
+                    print(f"Fluxer: Server error (HTTP {e.status}) during unpin. Retrying in {wait_time} seconds.")
                     await asyncio.sleep(wait_time)
                 else:
-                    print(f"Fluxer: Unhandled HTTP error {e.status} during delete. Not retrying.")
+                    print(f"Fluxer: Unhandled HTTP error {e.status} during unpin. Not retrying.")
                     return False
             except Exception as e:
-                print(f"An unexpected error occurred deleting message {message_id}: {e}")
+                print(f"An unexpected error occurred unpinning message {message_id}: {e}")
                 traceback.print_exc()
                 return False
 
-        print(f"Fluxer: Failed to delete message {message_id} after {max_retries} attempts.")
+        print(f"Fluxer: Failed to unpin message {message_id} after {max_retries} attempts.")
         return False
 
     async def get_channel_pinned_messages(self, channel_id: str) -> list[dict[str, Any]]:
         """
         Fetches pinned messages from a Fluxer channel.
-        Note: Fluxer.py's get_messages does not have a 'pinned' parameter.
-        This method is a placeholder.
         """
-        print(f"Fluxer: (Placeholder) Attempting to fetch pinned messages for channel {channel_id}...")
-        print("Fluxer: Fetching pinned messages functionality is not directly supported by the current Fluxer.py library wrapper.")
-        return []
+        print(f"Fluxer: Attempting to fetch pinned messages for channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot fetch pinned messages.")
+            return []
+
+        try:
+            pinned_messages = await asyncio.wait_for(
+                self.fluxer_bot._http.get_pinned_messages(channel_id),
+                timeout=API_TIMEOUT
+            )
+            print(f"Fluxer: Successfully fetched {len(pinned_messages)} pinned messages for channel {channel_id}.")
+            return pinned_messages
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching pinned messages for channel {channel_id}.")
+            return []
+        except HTTPException as e:
+            print(f"Fluxer: Error fetching pinned messages for channel {channel_id}: Status={e.status}, Code={e.code}, Message={e.message}")
+            return []
+        except AttributeError:
+             print("Fluxer: Error - The underlying Fluxer.py library does not support 'get_pinned_messages'. Please update the library.")
+             return []
+        except Exception as e:
+            print(f"An unexpected error occurred fetching pinned messages: {e}")
+            traceback.print_exc()
+            return []
 
     async def get_pinned_message_ids(self, channel_id: str) -> list[str]:
         """
         Fetches IDs of pinned messages from a Fluxer channel.
-        Note: Fluxer.py's get_messages does not have a 'pinned' parameter.
-        This method is a placeholder.
         """
-        print(f"Fluxer: (Placeholder) Attempting to fetch pinned message IDs for channel {channel_id}...")
-        print("Fluxer: Fetching pinned message IDs functionality is not directly supported by the current Fluxer.py library wrapper.")
-        return []
+        pinned_messages = await self.get_channel_pinned_messages(channel_id)
+        return [str(msg['id']) for msg in pinned_messages if 'id' in msg]

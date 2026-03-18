@@ -202,6 +202,10 @@ Recently received Fluxer.py library to support with messages with attachments.
 - Update contents, meaning if message text was changed or deleted, this change should be reflected in Fluxer chat
 - Update deleted messages, meaning if one has been erased in Discord, it should be erased in Fluxer.
 
+### Masquerading
+
+UNTESTED, still WIP.
+
 ### Maximum Message Length Handling
 
 It is possible to overrun the maximum message length when exporting a non-masqueraded message. Scenario: when export-bot will attempt to prepend a username to the delivered message.
@@ -220,7 +224,8 @@ Feature to masquerade as origin server user when exporting message to target ser
 
 ## Pinned Messages / Pins
 
-- Initial migration: UNTESTED
+- Status: WAITING for feature merge upstream
+- Initial migration: 
 - Updated changes migrated after initial migration: UNTESTED
   - Pinned message updates (removal or promotion, plus new messages that have been pinned): UNTESTED
 - Preserve pins in threads: Not possible to implement until threading is implemented: UNTESTED

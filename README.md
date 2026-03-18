@@ -119,6 +119,35 @@ Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 
 Store this server ID in the `config.yaml` file, in the `server_id: ` section.
 
+### Optional: Enable Masquerading
+
+WARNING: The masquerade feature will allow the migration tool to perform actions WITH YOUR PERSONAL USER ACCOUNT. Be very careful and do not share your token with anyone unless you trust them!
+
+To enable the Masquerade feature, do the following: 
+
+In your web-browser:
+1. Go to `web.fluxer.app`
+1. Open the web-developer console. Do this by pressing Ctrl+Shift+I or by going to Menu -> More Tools -> Developer Console.
+1. Go to the 'Network' tab.
+1. In the Filter, enter 'api'
+1. From the type-buttons next to the Filter input, select 'Fetch/XHR'
+1. Now in the Fluxer chat section, send a message to some channel. It doesn't matter what the message is or where you send it.)
+1. In the web-developer section, you will see an entry appear labeled 'messages'. Click on this.
+1. The display view will change, showing specific details of the 'messages' entry.
+1. From the 'Headers' section, scroll down to the section for 'Request header`.
+1. Find the line labeled 'Authorization', and copy the value next to it. This is your Masquerade token.
+1. Save it into a specific file with the .token extension.
+1. Edit your config.yaml to reflect your username and your masquerade token file.
+
+#### Example config.yaml masquerade configuration
+
+```
+user_mappings:
+    "discord_username1234":
+        fluxer_username: "fluxer_EdgyZZ#1211"
+        fluxer_auth_key: "fluxer_user-EdgyZZ.token"
+```
+
 ## Storing Credentials and IDs
 
 Configuration is done through the `config.yaml` file in the project directory.

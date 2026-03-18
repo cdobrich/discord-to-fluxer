@@ -233,9 +233,9 @@ class MigrationTool:
                 print(f"      Emoji '{fluxer_emoji_name}' already exists on Fluxer. Skipping creation.")
                 # Store existing mapping in our in-memory map for message reactions
                 # Find the ID of the existing emoji from existing_fluxer_emojis
-                existing_fluxer_id = next((e['id'] for e in existing_fluxer_emojis if e['name'].lower() == fluxer_emoji_name), None)
-                if existing_fluxer_id:
-                    self.fluxer_emoji_map[d_emoji['id']] = existing_fluxer_id
+                existing_emoji_data = next((e for e in existing_fluxer_emojis if e['name'].lower() == fluxer_emoji_name), None)
+                if existing_emoji_data:
+                    self.fluxer_emoji_map[d_emoji['id']] = {'id': existing_emoji_data['id'], 'name': existing_emoji_data['name']}
                 continue
 
             # Download emoji image data
@@ -252,7 +252,7 @@ class MigrationTool:
                     print(f"      Successfully migrated emoji '{d_emoji['name']}' to Fluxer as '{r_emoji['name']}' (ID: {r_emoji['id']}).")
                     # Store mapping in DB and in-memory map
                     self.db.store_emoji_mapping(d_emoji['id'], r_emoji['id'], r_emoji['name'])
-                    self.fluxer_emoji_map[d_emoji['id']] = r_emoji['id']
+                    self.fluxer_emoji_map[d_emoji['id']] = {'id': r_emoji['id'], 'name': r_emoji['name']}
                 else:
                     print(f"      Warning: Failed to migrate emoji '{d_emoji['name']}'. See previous errors for details (e.g., already exists, permissions, bad request).")
             else:
@@ -289,6 +289,9 @@ class MigrationTool:
 
             # Get all existing message mappings for this channel from the DB
             # This will be used to detect edits and deletions
+            migrated_discord_ids_in_db = {
+                d_id for d_id, _ in self.db.get_all_message_mappings_for_channel(discord_channel_id)
+            }
             messages_currently_in_discord_channel = set() # To track messages still present in Discord
 
             # Fetch Discord's current pinned messages for this channel ONCE
@@ -418,10 +421,15 @@ class MigrationTool:
                                         for reaction in d_message['reactions']:
                                             fluxer_emoji_identifier = None
                                             if reaction['type'] == 'custom':
-                                                fluxer_emoji_identifier = self.fluxer_emoji_map.get(reaction['id'])
-                                                if not fluxer_emoji_identifier:
+                                                fluxer_emoji_data = self.fluxer_emoji_map.get(reaction['id'])
+                                                if not fluxer_emoji_data:
                                                     print(f"        Warning: Custom Discord emoji '{reaction['name']}' (ID: {reaction['id']}) not found in Fluxer emoji map. Skipping reaction.")
                                                     continue
+                                                
+                                                # Format as <:name:id> or <a:name:id> for Fluxer API
+                                                is_animated = reaction.get('animated', False)
+                                                fluxer_emoji_identifier = f"<{ 'a' if is_animated else '' }:{fluxer_emoji_data['name']}:{fluxer_emoji_data['id']}>"
+
                                             elif reaction['type'] == 'unicode':
                                                 fluxer_emoji_identifier = reaction['name']
 

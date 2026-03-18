@@ -35,7 +35,20 @@ class AppConfig:
         self.fluxer_server_id = str(data['fluxer']['server_id'])
         self.delay_between_messages_seconds = data['delays'].get('between_messages_seconds', 0.5)
         self.delay_between_channels_seconds = data['delays'].get('between_channels_seconds', 5.0)
+        
         self.user_mappings = data.get('user_mappings', {})
+        if self.user_mappings:
+            print("Processing user mappings to load auth keys from files...")
+            for username, mapping in self.user_mappings.items():
+                auth_key_file = mapping.get('fluxer_auth_key')
+                if auth_key_file and isinstance(auth_key_file, str):
+                    print(f"  Reading auth key for '{username}' from file: {auth_key_file}")
+                    # Replace the filename with the actual token content
+                    self.user_mappings[username]['fluxer_auth_key'] = read_token_from_file(auth_key_file)
+                elif 'fluxer_auth_key' in mapping:
+                    # Handle cases where the key might be missing or not a string
+                    print(f"  Warning: 'fluxer_auth_key' for '{username}' is not a valid file path. It will be ignored.")
+                    self.user_mappings[username]['fluxer_auth_key'] = None
 
 
 def load_config(config_path=CONFIG_FILE):
@@ -59,9 +72,9 @@ delays:
   between_messages_seconds: 0.5
   between_channels_seconds: 5.0
 user_mappings:
-  "discord_username":
+  "discord_username1234":
     fluxer_username: "your_fluxer_username"
-    fluxer_auth_key: "your_fluxer_auth_key"
+    fluxer_auth_key: "path/to/your_fluxer_auth_key.token"
         ''')
         raise
     except yaml.YAMLError as e:

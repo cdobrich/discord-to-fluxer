@@ -289,9 +289,6 @@ class MigrationTool:
 
             # Get all existing message mappings for this channel from the DB
             # This will be used to detect edits and deletions
-            migrated_discord_ids_in_db = {
-                d_id for d_id, _ in self.db.get_all_message_mappings_for_channel(discord_channel_id)
-            }
             messages_currently_in_discord_channel = set() # To track messages still present in Discord
 
             # Fetch Discord's current pinned messages for this channel ONCE

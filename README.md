@@ -6,6 +6,9 @@ Migrate from Discord Chat to [Fluxer](https://github.com/fluxerapp/fluxer) chat.
 
 You will need to create two bots (one for Discord and one for Fluxer), in order to run this program. This will require saving some info to files (guided steps below), running the setup script, then you may execute the full program.
 
+Migration resuming is supported, meaning the program will resume from the last successful migrated message.
+- Automatically: All channels will have a resume-attempt during the migration stage, attempting to continue from the last migrated message from each channel.
+
 ## Pre-requisites
 
 Python 3.10 or later installed on your system.
@@ -141,7 +144,7 @@ This program reads a `config.yaml` file, in its root program directory. This is 
 
 Open a command terminal at the location where you have `Discord-to-Fluxer` code files. Run:
 
-    sh setup.py
+    sh setup.sh
   
 This will create a virtual python environment and install the program's dependency files.
 
@@ -188,6 +191,7 @@ If the emoji of the same name already exists on the target server, it will skip 
 
 - Initial migration: DONE
 - Updated changes migrated after initial migration: UNTESTED
+  - RESUME: UNTESTED 
 
 Recently received Fluxer.py library to support with messages with attachments.
 

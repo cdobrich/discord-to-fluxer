@@ -8,7 +8,6 @@ from fluxer.enums import ChannelType
 from fluxer.errors import HTTPException
 from fluxer.models import Channel, Guild, Message, Emoji
 
-
 class FluxerClient:
     """
     A client for interacting with the Fluxer API using fluxer.py.
@@ -197,7 +196,7 @@ class FluxerClient:
         """
         return await self.get_server_channels(guild_id)
 
-    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3, author_name: str | None = None) -> dict[str, Any] | None:
+    async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None, max_retries: int = 3, author_name: str | None = None, reply_to_id: str | None = None) -> dict[str, Any] | None:
         """
         Sends a message with optional attachments to a Fluxer channel.
         Attachments should be a list of dicts, each with 'filename' and 'data' (bytes).
@@ -233,7 +232,8 @@ class FluxerClient:
                 message_data = await http_client.send_message(
                     channel_id=channel_id,
                     content=content,
-                    files=files_to_send if files_to_send else None
+                    files=files_to_send if files_to_send else None,
+                    reply_to=reply_to_id
                 )
                 print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {message_data.get('id')}")
                 return message_data

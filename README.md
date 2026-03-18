@@ -247,8 +247,10 @@ This edge-case needs to be handled.
 Feature to masquerade as origin server user when exporting message to target server.
 
 - Initial migration: DONE
-- Updated changes migrated after initial migration: UNTESTED
-  - RESUME: UNTESTED 
+- Updated changes migrated after initial migration:
+  - Create new message: DONE
+  - UPDATE existing messages: NOT WORKING
+  - DELETE messages from Fluxer, after their origin source deleted them: UNTESTED
 
 ## Pinned Messages / Pins
 

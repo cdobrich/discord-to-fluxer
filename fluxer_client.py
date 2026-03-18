@@ -491,6 +491,38 @@ class FluxerClient:
             traceback.print_exc()
             return False
 
+    async def remove_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str, user_id: str = "@me") -> bool:
+        """
+        Removes a reaction from a Fluxer message.
+        """
+        print(f"Fluxer: Attempting to remove reaction '{emoji_id_or_name}' from message {message_id} in channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot remove reaction.")
+            return False
+
+        try:
+            await asyncio.wait_for(
+                self.fluxer_bot._http.delete_reaction(
+                    channel_id=channel_id,
+                    message_id=message_id,
+                    emoji=emoji_id_or_name,
+                    user_id=user_id
+                ),
+                timeout=API_TIMEOUT
+            )
+            print(f"Fluxer: Successfully removed reaction '{emoji_id_or_name}' from message {message_id}.")
+            return True
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout removing reaction '{emoji_id_or_name}' from message {message_id}.")
+            return False
+        except HTTPException as e:
+            print(f"Fluxer: Error removing reaction '{emoji_id_or_name}' (HTTP {e.status}): {e.message}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred removing reaction: {e}")
+            traceback.print_exc()
+            return False
+
     async def pin_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
         """
         Pins a message in a Fluxer channel.
@@ -594,6 +626,61 @@ class FluxerClient:
 
         print(f"Fluxer: Failed to unpin message {message_id} after {max_retries} attempts.")
         return False
+
+    async def delete_channel(self, channel_id: str) -> bool:
+        """
+        Deletes a channel on Fluxer.
+        """
+        print(f"Fluxer: Attempting to delete channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot delete channel.")
+            return False
+
+        try:
+            await asyncio.wait_for(
+                self.fluxer_bot._http.delete_channel(channel_id=channel_id),
+                timeout=API_TIMEOUT
+            )
+            print(f"Fluxer: Successfully deleted channel {channel_id}.")
+            return True
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout deleting channel {channel_id}.")
+            return False
+        except HTTPException as e:
+            print(f"Fluxer: Error deleting channel {channel_id}: Status={e.status}, Code={e.code}, Message={e.message}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred deleting channel {channel_id}: {e}")
+            traceback.print_exc()
+            return False
+
+    async def get_message(self, channel_id: str, message_id: str) -> dict[str, Any] | None:
+        """
+        Fetches a single message from Fluxer.
+        """
+        print(f"Fluxer: Fetching message {message_id} in channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot fetch message.")
+            return None
+
+        try:
+            message_data = await asyncio.wait_for(
+                self.fluxer_bot._http.get_message(channel_id=channel_id, message_id=message_id),
+                timeout=API_TIMEOUT
+            )
+            return message_data
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching message {message_id}.")
+            return None
+        except HTTPException as e:
+            if e.status == 404:
+                return None # Message not found
+            print(f"Fluxer: Error fetching message {message_id}: Status={e.status}, Code={e.code}, Message={e.message}")
+            return None
+        except Exception as e:
+            print(f"An unexpected error occurred fetching message {message_id}: {e}")
+            traceback.print_exc()
+            return None
 
     async def get_channel_pinned_messages(self, channel_id: str) -> list[dict[str, Any]]:
         """

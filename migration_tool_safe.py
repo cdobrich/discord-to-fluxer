@@ -79,6 +79,7 @@ class MigrationTool:
     async def setup_server_structure(self):
         """
         Migrates Discord channels to Fluxer, preventing duplicates and skipping categories.
+        Also handles deletion of Fluxer channels if they were deleted on Discord.
         """
         print("\n--- STAGE: Setting up server structure on Fluxer ---")
         print("  Fetching Discord channels and categories...")
@@ -102,6 +103,26 @@ class MigrationTool:
         discord_id_to_fluxer_id_map = {d_id: r_id for d_id, r_id in db_channel_mappings}
         print(f"  Found {len(discord_id_to_fluxer_id_map)} existing channel mappings in DB.")
 
+        # --- Check for deleted channels ---
+        current_discord_channel_ids = {c['id'] for c in discord_channels}
+        stored_discord_channel_ids = set(discord_id_to_fluxer_id_map.keys())
+        
+        deleted_discord_channel_ids = stored_discord_channel_ids - current_discord_channel_ids
+        
+        if deleted_discord_channel_ids:
+            print(f"  Found {len(deleted_discord_channel_ids)} channels in DB that are no longer on Discord. Processing deletions...")
+            for d_id in deleted_discord_channel_ids:
+                fluxer_id = discord_id_to_fluxer_id_map[d_id]
+                print(f"    Discord channel {d_id} was deleted. Deleting corresponding Fluxer channel {fluxer_id}...")
+                success = await self.fluxer_client.delete_channel(fluxer_id)
+                if success:
+                    print(f"      Successfully deleted Fluxer channel {fluxer_id}.")
+                    self.db.delete_channel_mapping(d_id)
+                else:
+                    print(f"      Warning: Failed to delete Fluxer channel {fluxer_id}. It might have already been deleted manually.")
+                    # Still remove from DB if it's gone or inaccessible to prevent future errors
+                    self.db.delete_channel_mapping(d_id)
+        # --- End deletion check ---
 
         # Sort channels by position
         discord_channels.sort(key=lambda c: c.get('position', 0))
@@ -262,6 +283,71 @@ class MigrationTool:
 
         print("--- STAGE: Custom emoji migration complete ---")
 
+    async def sync_reactions(self, fluxer_channel_id, fluxer_message_id, discord_reactions):
+        """
+        Synchronizes reactions for a message. Adds missing ones and removes extras.
+        """
+        # Fetch current reactions from Fluxer
+        fluxer_message = await self.fluxer_client.get_message(fluxer_channel_id, fluxer_message_id)
+        if not fluxer_message:
+            print(f"      Warning: Could not fetch Fluxer message {fluxer_message_id} to sync reactions.")
+            return
+
+        fluxer_reactions = fluxer_message.get('reactions', {}) # dict of emoji_id -> {users: [...], me: bool}
+        
+        # Prepare set of Discord reactions (identifiers)
+        discord_reaction_identifiers = set()
+        for reaction in discord_reactions:
+            if reaction['type'] == 'custom':
+                fluxer_emoji_data = self.fluxer_emoji_map.get(reaction['id'])
+                if fluxer_emoji_data:
+                    # Identifier format for Fluxer API
+                    is_animated = reaction.get('animated', False)
+                    identifier = f"<{ 'a' if is_animated else '' }:{fluxer_emoji_data['name']}:{fluxer_emoji_data['id']}>"
+                    discord_reaction_identifiers.add(identifier)
+            elif reaction['type'] == 'unicode':
+                discord_reaction_identifiers.add(reaction['name'])
+
+        # 1. Add missing reactions
+        for identifier in discord_reaction_identifiers:
+            # Check if this reaction exists on Fluxer (roughly, keys might vary slightly in format so exact match is best effort)
+            # Fluxer API usually returns keys like "id" for custom or unicode char
+            
+            # Simple check: if not in fluxer_reactions keys
+            # Note: Fluxer keys for custom emojis might just be the ID.
+            # We need to robustly check.
+            
+            already_reacted = False
+            for f_key in fluxer_reactions:
+                if f_key in identifier: # identifier has name:id, key might be id
+                     already_reacted = True
+                     break
+                if f_key == identifier: # Exact match (unicode)
+                    already_reacted = True
+                    break
+            
+            if not already_reacted:
+                print(f"      Sync: Adding missing reaction '{identifier}' to Fluxer message {fluxer_message_id}...")
+                await self.fluxer_client.apply_reaction(fluxer_channel_id, fluxer_message_id, identifier)
+                await asyncio.sleep(0.1)
+
+        # 2. Remove extra reactions (only if 'me' is true, i.e., bot reacted)
+        # Note: We can't easily remove other users' reactions without admin perms/masquerade context for everyone.
+        # We'll focus on cleaning up the bot's own stale reactions.
+        for f_key, info in fluxer_reactions.items():
+            if info.get('me', False):
+                # Check if this f_key corresponds to any current Discord reaction
+                keep = False
+                for d_ident in discord_reaction_identifiers:
+                    if f_key in d_ident or f_key == d_ident:
+                        keep = True
+                        break
+                
+                if not keep:
+                    print(f"      Sync: Removing stale reaction '{f_key}' from Fluxer message {fluxer_message_id}...")
+                    await self.fluxer_client.remove_reaction(fluxer_channel_id, fluxer_message_id, f_key)
+                    await asyncio.sleep(0.1)
+
 
     async def migrate_messages(self):
         """
@@ -366,6 +452,9 @@ class MigrationTool:
                                 stored_content = db_entry['original_discord_content']
                                 stored_attachments = db_entry['original_discord_attachments']
 
+                                # Sync Reactions for existing messages
+                                await self.sync_reactions(fluxer_channel_id, stored_fluxer_id, d_message['reactions'])
+
                                 # Compare current Discord state with stored state
                                 if current_discord_content != stored_content or set(current_discord_attachment_urls) != set(stored_attachments):
                                     print(f"      Discord message {d_message['id']} has been edited. Updating Fluxer message {stored_fluxer_id}...")
@@ -417,33 +506,8 @@ class MigrationTool:
 
                                     # --- Apply Reactions ---
                                     if d_message['reactions']:
-                                        print(f"      Applying {len(d_message['reactions'])} reactions to Fluxer message {fluxer_message_id}...")
-                                        for reaction in d_message['reactions']:
-                                            fluxer_emoji_identifier = None
-                                            if reaction['type'] == 'custom':
-                                                fluxer_emoji_data = self.fluxer_emoji_map.get(reaction['id'])
-                                                if not fluxer_emoji_data:
-                                                    print(f"        Warning: Custom Discord emoji '{reaction['name']}' (ID: {reaction['id']}) not found in Fluxer emoji map. Skipping reaction.")
-                                                    continue
-                                                
-                                                # Format as <:name:id> or <a:name:id> for Fluxer API
-                                                is_animated = reaction.get('animated', False)
-                                                fluxer_emoji_identifier = f"<{ 'a' if is_animated else '' }:{fluxer_emoji_data['name']}:{fluxer_emoji_data['id']}>"
-
-                                            elif reaction['type'] == 'unicode':
-                                                fluxer_emoji_identifier = reaction['name']
-
-                                            if fluxer_emoji_identifier:
-                                                success = await self.fluxer_client.apply_reaction(
-                                                    channel_id=fluxer_channel_id,
-                                                    message_id=fluxer_message_id,
-                                                    emoji_id_or_name=fluxer_emoji_identifier
-                                                )
-                                                if not success:
-                                                    print(f"        Warning: Failed to apply reaction '{reaction.get('name', reaction.get('id'))}' to message {fluxer_message_id}.")
-                                                await asyncio.sleep(0.1)
-                                            else:
-                                                print(f"        Warning: Could not determine Fluxer emoji identifier for reaction: {reaction}. Skipping.")
+                                        # Use the same logic as sync for new messages
+                                        await self.sync_reactions(fluxer_channel_id, fluxer_message_id, d_message['reactions'])
                                     # --- End Apply Reactions ---
 
                                     # --- Pin new message if it was pinned in Discord ---
@@ -510,6 +574,10 @@ class MigrationTool:
                     d_msg = await self.discord_client.get_message_by_id(discord_channel_id, discord_id_in_db)
                     if not d_msg:
                         continue
+                    
+                    # Sync reactions for old messages too
+                    await self.sync_reactions(fluxer_channel_id, fluxer_id_in_db, d_msg['reactions'])
+
                     db_entry = self.db.get_message_details_by_discord_id(discord_id_in_db)
                     if not db_entry:
                         continue

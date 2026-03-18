@@ -210,9 +210,7 @@ The current asynchronous design, combined with the logic of fetching messages `a
 ## Emojis
 
 - Initial migration: DONE
-- Updated changes migrated after initial migration.
-  - Create new channel when ran after update: DONE
-  - Delete new channel when ran after update: NOT WORKING
+- Updated changes migrated after initial migration: NOT WORKING
 
 The program will migrate custom emoji from Discord servers to target Fluxer servers. 
 
@@ -221,8 +219,10 @@ If the emoji of the same name already exists on the target server, it will skip 
 ## Messages to Channels & Message Attachment
 
 - Initial migration: DONE
-- Updated changes migrated after initial migration: UNTESTED
-  - RESUME: UNTESTED 
+- Updated changes migrated after initial migration:
+  - Create new channel when ran after update: DONE
+  - Delete new channel when ran after update: DONE
+
 
 Recently received Fluxer.py library to support with messages with attachments.
 

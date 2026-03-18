@@ -98,6 +98,13 @@ class StateManager:
         self.conn.commit()
         print(f"Stored channel mapping: Discord {discord_id} -> Fluxer {fluxer_id}")
 
+    def delete_channel_mapping(self, discord_id):
+        """Deletes a channel mapping from the database."""
+        cursor = self.conn.cursor()
+        cursor.execute('DELETE FROM channel_mappings WHERE discord_id = ?', (discord_id,))
+        self.conn.commit()
+        print(f"Deleted channel mapping for Discord ID {discord_id} from DB.")
+
     def get_fluxer_channel_id(self, discord_id):
         """Retrieves the Fluxer channel ID for a given Discord channel ID."""
         cursor = self.conn.cursor()

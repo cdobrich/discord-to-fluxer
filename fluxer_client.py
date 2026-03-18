@@ -45,7 +45,8 @@ class FluxerClient:
             return None
 
         print(f"FluxerClient: initializing masquerade client for '{username}'...")
-        http_client = HTTPClient(auth_key)
+        # Initialize HTTPClient with is_bot=False for user tokens
+        http_client = HTTPClient(auth_key, is_bot=False)
         try:
             await http_client._ensure_session()
             self._masquerade_https[username] = http_client

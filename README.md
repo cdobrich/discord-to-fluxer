@@ -205,12 +205,14 @@ The current asynchronous design, combined with the logic of fetching messages `a
 
 ## Channel Creation
 - Initial migration: DONE
-- Updated changes migrated after initial migration: UNTESTED
+- Updated changes migrated after initial migration: BROKEN
 
 ## Emojis
 
-- Initial migration: UNTESTED
-- Updated changes migrated after initial migration: UNTESTED
+- Initial migration: DONE
+- Updated changes migrated after initial migration.
+  - Create new channel when ran after update: DONE
+  - Delete new channel when ran after update: NOT WORKING
 
 The program will migrate custom emoji from Discord servers to target Fluxer servers. 
 
@@ -231,10 +233,6 @@ Recently received Fluxer.py library to support with messages with attachments.
 - Update contents, meaning if message text was changed or deleted, this change should be reflected in Fluxer chat
 - Update deleted messages, meaning if one has been erased in Discord, it should be erased in Fluxer.
 
-### Masquerading
-
-UNTESTED, still WIP.
-
 ### Maximum Message Length Handling
 
 It is possible to overrun the maximum message length when exporting a non-masqueraded message. Scenario: when export-bot will attempt to prepend a username to the delivered message.
@@ -248,13 +246,14 @@ This edge-case needs to be handled.
 
 Feature to masquerade as origin server user when exporting message to target server.
 
-- Initial migration: UNTESTED
+- Initial migration: DONE
 - Updated changes migrated after initial migration: UNTESTED
+  - RESUME: UNTESTED 
 
 ## Pinned Messages / Pins
 
 - Status: WAITING for feature merge upstream
-- Initial migration: 
+- Initial migration: UNTESTED
 - Updated changes migrated after initial migration: UNTESTED
   - Pinned message updates (removal or promotion, plus new messages that have been pinned): UNTESTED
 - Preserve pins in threads: Not possible to implement until threading is implemented: UNTESTED
@@ -262,7 +261,7 @@ Feature to masquerade as origin server user when exporting message to target ser
 
 ## "Reply-to" Linkage Preserving
 
-- Initial migration: UNTESTED
+- Initial migration: NOT WORKING
 - Updated changes migrated after initial migration: UNTESTED
 
 

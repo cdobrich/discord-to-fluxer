@@ -43,8 +43,15 @@ class AppConfig:
                 auth_key_file = mapping.get('fluxer_auth_key')
                 if auth_key_file and isinstance(auth_key_file, str):
                     print(f"  Reading auth key for '{username}' from file: {auth_key_file}")
-                    # Replace the filename with the actual token content
-                    self.user_mappings[username]['fluxer_auth_key'] = read_token_from_file(auth_key_file)
+                    token = read_token_from_file(auth_key_file)
+                    if token:
+                        # Replace the filename with the actual token content
+                        self.user_mappings[username]['fluxer_auth_key'] = token
+                        print(f"    -> Successfully loaded auth key for '{username}'.")
+                    else:
+                        # read_token_from_file already prints an error, but let's be explicit here.
+                        print(f"    -> [!] FAILED to load auth key for '{username}'. Masquerading will not work for this user.")
+                        self.user_mappings[username]['fluxer_auth_key'] = None
                 elif 'fluxer_auth_key' in mapping:
                     # Handle cases where the key might be missing or not a string
                     print(f"  Warning: 'fluxer_auth_key' for '{username}' is not a valid file path. It will be ignored.")
@@ -72,7 +79,7 @@ delays:
   between_messages_seconds: 0.5
   between_channels_seconds: 5.0
 user_mappings:
-  "discord_username1234":
+  "discord_username#1234":
     fluxer_username: "your_fluxer_username"
     fluxer_auth_key: "path/to/your_fluxer_auth_key.token"
         ''')

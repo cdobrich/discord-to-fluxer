@@ -3,4 +3,5 @@ discord==2.3.2
 pytest==8.4.1
 pytest-asyncio==1.1.0
 PyYAML==6.0.2
-fluxer.py @ git+https://github.com/akarealemil/fluxer.py.git@fb9b2e164a058e57e257bbdc8eadec50e719fc15
+fluxer.py
+# fluxer.py @ git+https://github.com/akarealemil/fluxer.py.git@fb9b2e164a058e57e257bbdc8eadec50e719fc15

@@ -88,11 +88,11 @@ To enable the migration program to interact with your Fluxer server, create a Fl
       * `Attach Files`
       * `Read Message History`
       * `Add Reactions`
-    * Scroll to the very bottom of this very. A URL will have been generated. Copy the generated URL.
+    * Scroll to the very bottom of this very. A `Authorize URL` will have been generated. Copy the generated URL.
     * NOTE: After selecting the minimum `bot` step, more permissions can be granted later within a target server.
     
 5.  **Invite the Bot to Your Server:**
-    * Paste the copied URL into your web browser.
+    * Paste the copied `Authorize URL` into your web browser.
     * Select the Fluxer server you wish to add the Bot to, in order to migrate content into there.(Your own user must have "Manage Server" permissions on this server).
     * Authorize the bot to be added.
 
@@ -216,7 +216,9 @@ The current asynchronous design, combined with the logic of fetching messages `a
 
 ## Channel Creation
 - Initial migration: DONE
-- Updated changes migrated after initial migration: BROKEN
+- Updated changes migrated after initial migration:
+  - Create new channel when ran after update: DONE
+  - Delete new channel when ran after update: DONE
 
 ## Emojis
 
@@ -231,9 +233,9 @@ If the emoji of the same name already exists on the target server, it will skip 
 
 - Initial migration: DONE
 - Updated changes migrated after initial migration:
-  - Create new channel when ran after update: DONE
-  - Delete new channel when ran after update: DONE
-
+  - CREATE new message: NOT WORKING
+  - UPDATE existing messages: NOT WORKING
+  - DELETE messages from Fluxer, after their origin source deleted them: UNTESTED
 
 Recently received Fluxer.py library to support with messages with attachments.
 
@@ -259,29 +261,28 @@ Feature to masquerade as origin server user when exporting message to target ser
 
 - Initial migration: DONE
 - Updated changes migrated after initial migration:
-  - Create new message: DONE
+  - CREATE new message: PARTIAL
+    - Specifically will append a new message to a channel IF nothing else has been previously deleted from the post-exported Fluxer channel
+    - FAIL: If deleting a previously existing message from Discord, any later new messages will not be migrated 
   - UPDATE existing messages: NOT WORKING
   - DELETE messages from Fluxer, after their origin source deleted them: UNTESTED
 
 ## Pinned Messages / Pins
 
-- Status: WAITING for feature merge upstream
-- Initial migration: UNTESTED
-- Updated changes migrated after initial migration: UNTESTED
+- Initial migration: DONE
+- Updated changes migrated after initial migration: BROKEN
   - Pinned message updates (removal or promotion, plus new messages that have been pinned): UNTESTED
 - Preserve pins in threads: Not possible to implement until threading is implemented: UNTESTED
 
 
 ## "Reply-to" Linkage Preserving
 
-- Initial migration: NOT WORKING
+- Initial migration: DONE
 - Updated changes migrated after initial migration: UNTESTED
-
 
 Reply-to links are preserved, if possible, during the migration process.
 
 DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Fluxer message from that migration, the script also tracks the fluxer-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated fluxer-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new fluxer message that uses the fluxer-message-reply-to system to target the correct prior message.
-
   
 # Not Supported Features
 

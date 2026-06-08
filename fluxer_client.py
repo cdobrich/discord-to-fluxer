@@ -237,22 +237,6 @@ class FluxerClient:
                 content = f"{author_name}: {content}"
                 print(f"Fluxer: Sending message as bot (prepended '{author_name}: ').")
 
-        # Fallback for reply_to if not supported by library
-        if reply_to_id:
-            # Since HTTPClient.send_message doesn't support reply_to/replies, we add it to content
-            # This is a visual fallback.
-            # Note: If the library is updated to support it, we can revert this.
-            # For now, we avoid the TypeError.
-            # We check if content is empty to avoid just sending the reply indicator if that's weird,
-            # but usually there's content.
-            pass 
-            # Actually, let's not modify content here to avoid clutter if the user didn't ask for visual indicator.
-            # But since we can't link it natively, visual is better than nothing.
-            # However, the user asked to "preserve the Reply-to linkage". 
-            # Since the library fails, I will just remove the argument to fix the crash.
-            # I'll log a warning.
-            print(f"Fluxer: Warning - 'reply_to_id' {reply_to_id} ignored because underlying library does not support it in send_message.")
-
         print(f"Fluxer: Attempting to send message to channel {channel_id} with content: {content[:50]}...")
         if not http_client:
             print("Error: Fluxer HTTP client not initialized. Cannot send message.")
@@ -269,15 +253,36 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                # Removed reply_to/replies argument as it causes TypeError
-                message_data = await asyncio.wait_for(
-                    http_client.send_message(
-                        channel_id=channel_id,
-                        content=content,
-                        files=files_to_send if files_to_send else None
-                    ),
-                    timeout=UPLOAD_TIMEOUT
-                )
+                message_data = None
+                if reply_to_id:
+                    print(f"Fluxer: Attempting to reply to message {reply_to_id} in channel {channel_id}.")
+                    # Fetch the message to reply to
+                    original_message_data = await self.get_message(channel_id, reply_to_id)
+                    if original_message_data:
+                        # Create a Message object from the fetched data
+                        original_message = Message.from_data(original_message_data, http_client)
+                        # Use the reply method
+                        message_data = await asyncio.wait_for(
+                            original_message.reply(
+                                content=content,
+                                files=files_to_send if files_to_send else None
+                            ),
+                            timeout=UPLOAD_TIMEOUT
+                        )
+                        print(f"Fluxer: Successfully sent reply to message {reply_to_id}.")
+                    else:
+                        print(f"Fluxer: Warning - Message {reply_to_id} not found for reply. Sending as regular message.")
+                
+                if not message_data: # If not a reply, or reply failed to find original message
+                    message_data = await asyncio.wait_for(
+                        http_client.send_message(
+                            channel_id=channel_id,
+                            content=content,
+                            files=files_to_send if files_to_send else None
+                        ),
+                        timeout=UPLOAD_TIMEOUT
+                    )
+
                 print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {message_data.get('id')}")
                 return message_data
             except asyncio.TimeoutError:

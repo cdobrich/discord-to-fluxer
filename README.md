@@ -19,9 +19,11 @@ To enable the migration program to interact with your Discord server, your Disco
 
 Follow these steps:
 
-1.  **Create a Bot Application:**
+1.  **Build a Bot / Create a Bot Application:**
     * Go to the [Discord Developer Portal](https://discord.com/developers/applications).
-    * Log in and click on "New Application".
+    * Log in and click on "Build a Bot".
+    * Click the "New Application" button.
+      * If you receive an error message, try again without being on a VPN.  
     * Give your application a name and create it.
     * Navigate to the "Bot" tab on the left sidebar.
     * Click "Add Bot" and confirm.
@@ -107,7 +109,12 @@ Origin server:
 1. On the left side of the Discord Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
 1. Navigate to the server by Left-clicking the original server.
 1. Right-click on whatever is the original channel.
-1. From the menu, select 'Copy Server ID'.
+1. From the menu, select 'Copy Server Info', then select 'Copy Server ID'.
+  - TROUBLESHOOTING: If you do not see the 'Copy Server ID' menu option, you may need to enable Developer Mode for your Discord account. 
+    To enable Developer Mode, for Desktop and Web:
+      1. Click the gear icon (User Settings) next to your username at the bottom-left. 
+      1. Scroll down the left sidebar and select Advanced. 
+      1. Toggle the switch next to Developer Mode to the on position (it will turn blue).
 
 Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 

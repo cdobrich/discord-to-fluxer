@@ -1,8 +1,9 @@
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, patch, call
+from unittest.mock import AsyncMock, patch, call, MagicMock
 
 from fluxer_client import FluxerClient
+from fluxer.models import Message # Import Message for mocking
 
 # Mark all tests in this file as asyncio
 pytestmark = pytest.mark.asyncio
@@ -145,3 +146,79 @@ async def test_apply_multiple_reactions(MockHTTPClient, mock_http_client):
         call(channel_id=channel_id, message_id=message_id, emoji="😂"),
     ]
     default_client.add_reaction.assert_has_calls(expected_calls, any_order=False)
+
+@patch('fluxer_client.HTTPClient')
+@patch('fluxer_client.Message.from_data')
+@patch('fluxer_client.FluxerClient.get_message')
+async def test_send_message_with_reply_linking(mock_get_message, mock_message_from_data, MockHTTPClient):
+    """
+    Verify that send_message correctly uses reply-linking when reply_to_id is provided,
+    and falls back to regular send if the original message is not found.
+    """
+    # Arrange
+    default_client_http = AsyncMock()
+    MockHTTPClient.return_value = default_client_http
+
+    client = FluxerClient(token="main_bot_token", fluxer_guild_id="123")
+    await client.start()
+
+    channel_id = "channel1"
+    message_content = "This is a reply."
+    reply_to_id = "original_message_id"
+    attachments = [{"filename": "test.txt", "data": b"test data"}]
+
+    # --- Test Case 1: Original message found, reply should be used ---
+    print("\n--- Testing reply-linking: Original message found ---")
+    mock_original_message_data = {"id": reply_to_id, "channel_id": channel_id, "content": "Original message"}
+    mock_get_message.return_value = mock_original_message_data
+
+    mock_message_instance = MagicMock(spec=Message)
+    mock_message_instance.reply = AsyncMock(return_value={"id": "new_reply_id", "content": message_content})
+    mock_message_from_data.return_value = mock_message_instance
+
+    # Act
+    result = await client.send_message(
+        channel_id=channel_id,
+        content=message_content,
+        attachments=attachments,
+        reply_to_id=reply_to_id
+    )
+
+    # Assert
+    mock_get_message.assert_awaited_once_with(channel_id, reply_to_id)
+    mock_message_from_data.assert_called_once_with(mock_original_message_data, default_client_http)
+    mock_message_instance.reply.assert_awaited_once_with(
+        content=message_content,
+        files=[{"filename": "test.txt", "data": b"test data"}]
+    )
+    default_client_http.send_message.assert_not_called() # Should not call regular send_message
+    assert result == {"id": "new_reply_id", "content": message_content}
+
+    # Reset mocks for the next test case
+    mock_get_message.reset_mock()
+    mock_message_from_data.reset_mock()
+    default_client_http.send_message.reset_mock()
+
+    # --- Test Case 2: Original message NOT found, should fall back to regular send ---
+    print("\n--- Testing reply-linking: Original message NOT found (fallback) ---")
+    mock_get_message.return_value = None # Simulate message not found
+    default_client_http.send_message.return_value = {"id": "fallback_message_id", "content": message_content}
+
+    # Act
+    result = await client.send_message(
+        channel_id=channel_id,
+        content=message_content,
+        attachments=attachments,
+        reply_to_id=reply_to_id
+    )
+
+    # Assert
+    mock_get_message.assert_awaited_once_with(channel_id, reply_to_id)
+    mock_message_from_data.assert_not_called() # Should not try to create Message object
+    mock_message_instance.reply.assert_not_called() # Should not try to reply
+    default_client_http.send_message.assert_awaited_once_with(
+        channel_id=channel_id,
+        content=message_content,
+        files=[{"filename": "test.txt", "data": b"test data"}]
+    )
+    assert result == {"id": "fallback_message_id", "content": message_content}

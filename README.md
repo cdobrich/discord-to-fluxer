@@ -96,10 +96,12 @@ To enable the migration program to interact with your Fluxer server, create a Fl
 
 By following these instructions, your bots will have the necessary access to perform the migration tasks.
 
-## Server Origin and Target Server Setup
+## Origin-Server and Target-Server Setup
 
 
 ### Copy the Discord Server Channel ID
+
+Origin server:
 
 1. Log into https://discord.com/channels/
 1. On the left side of the Discord Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
@@ -110,6 +112,8 @@ By following these instructions, your bots will have the necessary access to per
 Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 
 ### Copy the Fluxer Server Channel ID
+
+Target server:
 
 1. Log into https://web.fluxer.app/
 1. On the left side of the Fluxer Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.

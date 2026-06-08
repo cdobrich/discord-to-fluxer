@@ -464,7 +464,7 @@ class FluxerClient:
         """
         Applies a reaction to a Fluxer message.
         """
-        print(f"Fluxer: Attempting to apply reaction '{emoji_id_or_or_name}' to message {message_id} in channel {channel_id}...")
+        print(f"Fluxer: Attempting to apply reaction '{emoji_id_or_name}' to message {message_id} in channel {channel_id}...")
         if not self.fluxer_bot._http:
             print("Error: Fluxer HTTP client not initialized. Cannot apply reaction.")
             return False

@@ -88,13 +88,15 @@ async def test_masquerade_sends_as_bot_for_unmapped_user(MockHTTPClient, mock_ht
     assert kwargs['content'] == "other_user#5678: Hello from other_user"
     assert kwargs['channel_id'] == "channel1"
 
+
 @patch('fluxer_client.HTTPClient')
 async def test_apply_single_reaction(MockHTTPClient, mock_http_client):
     """Verify that a single reaction is applied correctly."""
     # Arrange
     default_client = AsyncMock()
+    default_client.add_reaction = AsyncMock() # Explicitly mock add_reaction as AsyncMock
     MockHTTPClient.return_value = default_client
-    
+
     client = FluxerClient(token="main_bot_token", fluxer_guild_id="123")
     await client.start()
 
@@ -113,13 +115,15 @@ async def test_apply_single_reaction(MockHTTPClient, mock_http_client):
         emoji=emoji
     )
 
+
 @patch('fluxer_client.HTTPClient')
 async def test_apply_multiple_reactions(MockHTTPClient, mock_http_client):
     """Verify that multiple reactions can be applied sequentially."""
     # Arrange
     default_client = AsyncMock()
+    default_client.add_reaction = AsyncMock() # Explicitly mock add_reaction as AsyncMock
     MockHTTPClient.return_value = default_client
-    
+
     client = FluxerClient(token="main_bot_token", fluxer_guild_id="123")
     await client.start()
 
@@ -133,7 +137,7 @@ async def test_apply_multiple_reactions(MockHTTPClient, mock_http_client):
 
     # Assert
     assert default_client.add_reaction.call_count == 3
-    
+
     # Check that each call was made with the correct emoji
     expected_calls = [
         call(channel_id=channel_id, message_id=message_id, emoji="👍"),

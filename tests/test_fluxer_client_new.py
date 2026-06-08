@@ -172,14 +172,17 @@ async def test_send_message_with_reply_linking(mock_get_message, mock_message_fr
     mock_original_message_data = {"id": reply_to_id, "channel_id": channel_id, "content": "Original message"}
     mock_get_message.return_value = mock_original_message_data
 
-    # Create a mock Message object that has a .reply() method and a .to_dict() method
+    # Create a mock Message object that has a .reply() method
     mock_message_instance = MagicMock(spec=Message)
-    mock_sent_message_dict = {"id": "new_reply_id", "content": message_content}
+    mock_sent_message_dict = {"id": "new_reply_id", "content": message_content, "channel_id": channel_id}
     
-    # Configure the mock Message object's reply method to return another mock Message object
-    # that has a to_dict method.
-    mock_reply_return_message_obj = MagicMock(spec=Message)
-    mock_reply_return_message_obj.to_dict = MagicMock(return_value=mock_sent_message_dict) # Explicitly mock to_dict
+    # Configure the mock Message object's reply method to return another mock object
+    # that has the expected attributes (id, content, channel_id).
+    mock_reply_return_message_obj = MagicMock(
+        id=mock_sent_message_dict['id'],
+        content=mock_sent_message_dict['content'],
+        channel_id=mock_sent_message_dict['channel_id']
+    )
     mock_message_instance.reply = AsyncMock(return_value=mock_reply_return_message_obj)
     
     mock_message_from_data.return_value = mock_message_instance

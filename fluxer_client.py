@@ -266,7 +266,13 @@ class FluxerClient:
                             ),
                             timeout=UPLOAD_TIMEOUT
                         )
-                        message_data = sent_message_obj.to_dict() # Convert Message object to dict
+                        # Manually construct dictionary from Message object attributes
+                        message_data = {
+                            'id': sent_message_obj.id,
+                            'content': sent_message_obj.content,
+                            'channel_id': sent_message_obj.channel_id,
+                            # Add other relevant attributes if needed for further processing
+                        }
                         print(f"Fluxer: Successfully sent reply to message {reply_to_id}.")
                     else:
                         print(f"Fluxer: Warning - Message {reply_to_id} not found for reply. Sending as regular message.")

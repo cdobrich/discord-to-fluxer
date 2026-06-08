@@ -4,6 +4,7 @@ import os
 from fluxer.enums import ChannelType
 import re
 import traceback
+import yaml # Added for deletion handling
 
 from discord_client import DiscordClient
 from config import STATE_DB_FILE, AppConfig
@@ -258,7 +259,7 @@ class MigrationTool:
             else:
                 print(f"      Warning: Failed to download emoji image for '{d_emoji['name']}'. Skipping.")
 
-            await asyncio.sleep(self.config.delay_between_messages_seconds) # Use message delay for emojis too
+            await asyncio.sleep(self.config.delay_between_messages_seconds)
 
         print("--- STAGE: Custom emoji migration complete ---")
 
@@ -295,8 +296,8 @@ class MigrationTool:
             messages_currently_in_discord_channel = set() # To track messages still present in Discord
 
             # Fetch Discord's current pinned messages for this channel ONCE
-            discord_current_pinned_ids = await self.discord_client.get_channel_pinned_messages(discord_channel_id)
-            discord_current_pinned_set = set(discord_current_pinned_ids)
+            discord_current_pinned_messages = await self.discord_client.get_channel_pinned_messages(discord_channel_id)
+            discord_current_pinned_set = {msg['id'] for msg in discord_current_pinned_messages} # Extract IDs
             print(f"  Discord currently has {len(discord_current_pinned_set)} pinned messages in this channel.")
 
 
@@ -404,8 +405,9 @@ class MigrationTool:
                                     content=message_content_for_fluxer,
                                     attachments=fluxer_attachments,
                                     reply_to_id=fluxer_reply_to_id,
-                                    masquerade_name=masquerade_name,
-                                    masquerade_avatar=masquerade_avatar
+                                    author_name=masquerade_name, # Pass masquerade_name to fluxer_client
+                                    # masquerade_avatar is not directly supported by send_message,
+                                    # it's handled internally by _get_masquerade_http if a user mapping exists.
                                 )
 
                                 if r_message:
@@ -559,7 +561,6 @@ class MigrationTool:
 
             
             # --- Handle Message Deletions ---
-            import yaml
             # use the value from earlier in this channel loop
             if not full_discord_fetch_ok:
                 print(f"Skipping deletion check for channel {discord_channel_id} due to incomplete Discord fetch.")

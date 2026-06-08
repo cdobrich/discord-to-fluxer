@@ -256,25 +256,23 @@ class FluxerClient:
                 message_data = None
                 if reply_to_id:
                     print(f"Fluxer: Attempting to reply to message {reply_to_id} in channel {channel_id}.")
-                    # Fetch the message to reply to
                     original_message_data = await self.get_message(channel_id, reply_to_id)
                     if original_message_data:
-                        # Create a Message object from the fetched data
                         original_message = Message.from_data(original_message_data, http_client)
-                        # Use the reply method
-                        message_data = await asyncio.wait_for(
+                        sent_message_obj = await asyncio.wait_for( # This returns a Message object
                             original_message.reply(
                                 content=content,
                                 files=files_to_send if files_to_send else None
                             ),
                             timeout=UPLOAD_TIMEOUT
                         )
+                        message_data = sent_message_obj.to_dict() # Convert Message object to dict
                         print(f"Fluxer: Successfully sent reply to message {reply_to_id}.")
                     else:
                         print(f"Fluxer: Warning - Message {reply_to_id} not found for reply. Sending as regular message.")
                 
                 if not message_data: # If not a reply, or reply failed to find original message
-                    message_data = await asyncio.wait_for(
+                    message_data = await asyncio.wait_for( # This returns a dict
                         http_client.send_message(
                             channel_id=channel_id,
                             content=content,

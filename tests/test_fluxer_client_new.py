@@ -172,8 +172,16 @@ async def test_send_message_with_reply_linking(mock_get_message, mock_message_fr
     mock_original_message_data = {"id": reply_to_id, "channel_id": channel_id, "content": "Original message"}
     mock_get_message.return_value = mock_original_message_data
 
+    # Create a mock Message object that has a .reply() method and a .to_dict() method
     mock_message_instance = MagicMock(spec=Message)
-    mock_message_instance.reply = AsyncMock(return_value={"id": "new_reply_id", "content": message_content})
+    mock_sent_message_dict = {"id": "new_reply_id", "content": message_content}
+    
+    # Configure the mock Message object's reply method to return another mock Message object
+    # that has a to_dict method.
+    mock_reply_return_message_obj = MagicMock(spec=Message)
+    mock_reply_return_message_obj.to_dict = MagicMock(return_value=mock_sent_message_dict) # Explicitly mock to_dict
+    mock_message_instance.reply = AsyncMock(return_value=mock_reply_return_message_obj)
+    
     mock_message_from_data.return_value = mock_message_instance
 
     # Act
@@ -192,7 +200,7 @@ async def test_send_message_with_reply_linking(mock_get_message, mock_message_fr
         files=[{"filename": "test.txt", "data": b"test data"}]
     )
     default_client_http.send_message.assert_not_called() # Should not call regular send_message
-    assert result == {"id": "new_reply_id", "content": message_content}
+    assert result == mock_sent_message_dict # Assert against the dictionary returned by to_dict()
 
     # Reset mocks for the next test case
     mock_get_message.reset_mock()

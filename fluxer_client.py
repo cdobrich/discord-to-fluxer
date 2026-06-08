@@ -464,7 +464,7 @@ class FluxerClient:
         """
         Applies a reaction to a Fluxer message.
         """
-        print(f"Fluxer: Attempting to apply reaction '{emoji_id_or_name}' to message {message_id} in channel {channel_id}...")
+        print(f"Fluxer: Attempting to apply reaction '{emoji_id_or_or_name}' to message {message_id} in channel {channel_id}...")
         if not self.fluxer_bot._http:
             print("Error: Fluxer HTTP client not initialized. Cannot apply reaction.")
             return False
@@ -625,6 +625,61 @@ class FluxerClient:
                 return False
 
         print(f"Fluxer: Failed to unpin message {message_id} after {max_retries} attempts.")
+        return False
+
+    async def delete_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
+        """
+        Deletes a message from a Fluxer channel.
+        """
+        print(f"Fluxer: Attempting to delete message {message_id} in channel {channel_id}...")
+        if not self.fluxer_bot._http:
+            print("Error: Fluxer HTTP client not initialized. Cannot delete message.")
+            return False
+
+        for attempt in range(max_retries):
+            try:
+                await asyncio.wait_for(
+                    self.fluxer_bot._http.delete_message(
+                        channel_id=channel_id,
+                        message_id=message_id
+                    ),
+                    timeout=API_TIMEOUT
+                )
+                print(f"Fluxer: Successfully deleted message {message_id} from channel {channel_id}.")
+                return True
+            except asyncio.TimeoutError:
+                print(f"Fluxer: Timeout deleting message {message_id}. Attempt {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                continue
+            except HTTPException as e:
+                print(f"Fluxer: Error deleting message {message_id} (HTTP {e.status}): {e.message}. Attempt {attempt + 1}/{max_retries}")
+                if e.status == 401:
+                    print("Fluxer: Unauthorized (401) - Check bot token and 'Manage Messages' permission for deleting.")
+                    return False
+                elif e.status == 403:
+                    print("Fluxer: Forbidden (403) - Bot lacks 'Manage Messages' permission for deleting in this channel.")
+                    return False
+                elif e.status == 404:
+                    print(f"Fluxer: Message {message_id} or channel {channel_id} not found for deleting. Skipping.")
+                    return False
+                elif e.status == 429: # Rate limit
+                    wait_time = e.retry_after if e.retry_after else (2 ** attempt)
+                    print(f"Fluxer: Rate limit hit during delete. Waiting for {wait_time:.2f} seconds.")
+                    await asyncio.sleep(wait_time)
+                elif 500 <= e.status < 600: # Server errors (5xx)
+                    wait_time = 2 ** attempt
+                    print(f"Fluxer: Server error (HTTP {e.status}) during delete. Retrying in {wait_time} seconds.")
+                    await asyncio.sleep(wait_time)
+                else:
+                    print(f"Fluxer: Unhandled HTTP error {e.status} during delete. Not retrying.")
+                    return False
+            except Exception as e:
+                print(f"An unexpected error occurred deleting message {message_id}: {e}")
+                traceback.print_exc()
+                return False
+
+        print(f"Fluxer: Failed to delete message {message_id} after {max_retries} attempts.")
         return False
 
     async def delete_channel(self, channel_id: str) -> bool:

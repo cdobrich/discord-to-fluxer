@@ -475,28 +475,35 @@ class MigrationTool:
 
             # --- Reconcile pinned messages (Discord -> Fluxer) ---
             try:
-                discord_pinned_to_fluxer = {}
+                print(f"Reconciling pinned messages for Fluxer channel {fluxer_channel_id}...")
+
+                # 1. Gather all Discord message IDs that are currently pinned
+                discord_current_pinned_set = {str(m_id) for m_id in discord_current_pinned_ids}
+
+                # 2. Query what is currently pinned on Fluxer
+                fluxer_currently_pinned_ids = await self.fluxer_client.get_pinned_message_ids(fluxer_channel_id)
+
+                # 3. Pin messages that should be pinned
                 for d_id in discord_current_pinned_set:
                     r_id = self.db.get_fluxer_message_id(d_id)
-                    if r_id:
-                        discord_pinned_to_fluxer[d_id] = r_id
-                for d_id, r_id in discord_pinned_to_fluxer.items():
-                    if r_id not in fluxer_pinned_ids:
-                        print(f"  Pinning Fluxer message {r_id} for Discord pinned message {d_id}...")
-                        try:
-                            await self.fluxer_client.pin_message(fluxer_channel_id, r_id)
-                        except Exception as e:
-                            print(f"  Warning: Pin failed for Fluxer message {r_id}: {e}")
-                for r_pin_id in list(fluxer_pinned_ids):
-                    discord_source_id = self.db.get_discord_message_id(r_pin_id)
-                    if discord_source_id and discord_source_id not in discord_current_pinned_set:
-                        print(f"  Unpinning Fluxer message {r_pin_id} because Discord {discord_source_id} is not pinned...")
-                        try:
-                            await self.fluxer_client.unpin_message(fluxer_channel_id, r_pin_id)
-                        except Exception as e:
-                            print(f"  Warning: Unpin failed for Fluxer message {r_pin_id}: {e}")
+                    if r_id and r_id not in fluxer_currently_pinned_ids:
+                        print(f"Post-migration sync: Pinning Fluxer message {r_id} (Discord {d_id})")
+                        await self.fluxer_client.pin_message(fluxer_channel_id, r_id)
+                        await asyncio.sleep(self.config.delay_between_messages_seconds)
+
+                # 4. Unpin messages that are no longer pinned on Discord
+                for r_id in fluxer_currently_pinned_ids:
+                    d_id = self.db.get_discord_message_id(r_id)
+                    # If the message was unpinned on Discord but remains pinned on Fluxer
+                    if d_id and d_id not in discord_current_pinned_set:
+                        print(
+                            f"Post-migration sync: Unpinning Fluxer message {r_id} because Discord message {d_id} was unpinned.")
+                        await self.fluxer_client.unpin_message(fluxer_channel_id, r_id)
+                        await asyncio.sleep(self.config.delay_between_messages_seconds)
+
             except Exception as e:
-                print(f"Error reconciling pinned messages for channel {discord_channel_id}: {e}")
+                print(f"Error during pinned message reconciliation for channel {discord_channel_id}: {e}")
+                traceback.print_exc()
 
             # --- Reconcile edits to already-migrated messages (content and attachments) ---
             try:

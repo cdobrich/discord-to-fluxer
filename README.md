@@ -6,6 +6,9 @@ Migrate from Discord Chat to [Fluxer](https://github.com/fluxerapp/fluxer) chat.
 
 You will need to create two bots (one for Discord and one for Fluxer), in order to run this program. This will require saving some info to files (guided steps below), running the setup script, then you may execute the full program.
 
+Migration resuming is supported, meaning the program will resume from the last successful migrated message.
+- Automatically: All channels will have a resume-attempt during the migration stage, attempting to continue from the last migrated message from each channel.
+
 ## Pre-requisites
 
 Python 3.10 or later installed on your system.
@@ -16,9 +19,11 @@ To enable the migration program to interact with your Discord server, your Disco
 
 Follow these steps:
 
-1.  **Create a Bot Application:**
+1.  **Build a Bot / Create a Bot Application:**
     * Go to the [Discord Developer Portal](https://discord.com/developers/applications).
-    * Log in and click on "New Application".
+    * Log in and click on "Build a Bot".
+    * Click the "New Application" button.
+      * If you receive an error message, try again without being on a VPN.  
     * Give your application a name and create it.
     * Navigate to the "Bot" tab on the left sidebar.
     * Click "Add Bot" and confirm.
@@ -73,6 +78,7 @@ To enable the migration program to interact with your Fluxer server, create a Fl
     * Still on the "Application" tab, scroll down to the "OAuth2 URL Builder" section.
     * Select `bot' checkbox. A new section titled **"BOT PERMISSIONS"** will appear. In this section, select the following permissions:
       * `Manage Channels`
+      * `Create Emoji & Stickers`
       * `Manage Emoji & Stickers`
       * `View Channel`
       * `Send Messages`
@@ -82,30 +88,39 @@ To enable the migration program to interact with your Fluxer server, create a Fl
       * `Attach Files`
       * `Read Message History`
       * `Add Reactions`
-    * Scroll to the very bottom of this very. A URL will have been generated. Copy the generated URL.
+    * Scroll to the very bottom of this very. A `Authorize URL` will have been generated. Copy the generated URL.
     * NOTE: After selecting the minimum `bot` step, more permissions can be granted later within a target server.
     
 5.  **Invite the Bot to Your Server:**
-    * Paste the copied URL into your web browser.
+    * Paste the copied `Authorize URL` into your web browser.
     * Select the Fluxer server you wish to add the Bot to, in order to migrate content into there.(Your own user must have "Manage Server" permissions on this server).
     * Authorize the bot to be added.
 
 By following these instructions, your bots will have the necessary access to perform the migration tasks.
 
-## Server Origin and Target Server Setup
+## Origin-Server and Target-Server Setup
 
 
 ### Copy the Discord Server Channel ID
+
+Origin server:
 
 1. Log into https://discord.com/channels/
 1. On the left side of the Discord Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
 1. Navigate to the server by Left-clicking the original server.
 1. Right-click on whatever is the original channel.
-1. From the menu, select 'Copy Server ID'.
+1. From the menu, select 'Copy Server Info', then select 'Copy Server ID'.
+  - TROUBLESHOOTING: If you do not see the 'Copy Server ID' menu option, you may need to enable Developer Mode for your Discord account. 
+    To enable Developer Mode, for Desktop and Web:
+      1. Click the gear icon (User Settings) next to your username at the bottom-left. 
+      1. Scroll down the left sidebar and select Advanced. 
+      1. Toggle the switch next to Developer Mode to the on position (it will turn blue).
 
 Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 
 ### Copy the Fluxer Server Channel ID
+
+Target server:
 
 1. Log into https://web.fluxer.app/
 1. On the left side of the Fluxer Chat website, there is a sidebar. It displays the icons for servers the user (or bot) is a member of.
@@ -114,6 +129,35 @@ Store this server ID in the `config.yaml` file, in the `guild_id: ` section.
 1. From the menu, select 'Copy Community ID'.
 
 Store this server ID in the `config.yaml` file, in the `server_id: ` section.
+
+### Optional: Enable Masquerading
+
+WARNING: The masquerade feature will allow the migration tool to perform actions WITH YOUR PERSONAL USER ACCOUNT. Be very careful and do not share your token with anyone unless you trust them!
+
+To enable the Masquerade feature, do the following: 
+
+In your web-browser:
+1. Go to `web.fluxer.app`
+1. Open the web-developer console. Do this by pressing Ctrl+Shift+I or by going to Menu -> More Tools -> Developer Console.
+1. Go to the 'Network' tab.
+1. In the Filter, enter 'api'
+1. From the type-buttons next to the Filter input, select 'Fetch/XHR'
+1. Now in the Fluxer chat section, send a message to some channel. It doesn't matter what the message is or where you send it.)
+1. In the web-developer section, you will see an entry appear labeled 'messages'. Click on this.
+1. The display view will change, showing specific details of the 'messages' entry.
+1. From the 'Headers' section, scroll down to the section for 'Request header`.
+1. Find the line labeled 'Authorization', and copy the value next to it. This is your Masquerade token.
+1. Save it into a specific file with the .token extension.
+1. Edit your config.yaml to reflect your username and your masquerade token file.
+
+#### Example config.yaml masquerade configuration
+
+```
+user_mappings:
+    "discord_username1234":
+        fluxer_username: "fluxer_EdgyZZ#1211"
+        fluxer_auth_key: "fluxer_user-EdgyZZ.token"
+```
 
 ## Storing Credentials and IDs
 
@@ -140,7 +184,7 @@ This program reads a `config.yaml` file, in its root program directory. This is 
 
 Open a command terminal at the location where you have `Discord-to-Fluxer` code files. Run:
 
-    sh setup.py
+    sh setup.sh
   
 This will create a virtual python environment and install the program's dependency files.
 
@@ -172,12 +216,14 @@ The current asynchronous design, combined with the logic of fetching messages `a
 
 ## Channel Creation
 - Initial migration: DONE
-- Updated changes migrated after initial migration: UNTESTED
+- Updated changes migrated after initial migration:
+  - Create new channel when ran after update: DONE
+  - Delete new channel when ran after update: DONE
 
 ## Emojis
 
-- Initial migration: UNTESTED
-- Updated changes migrated after initial migration: UNTESTED
+- Initial migration: DONE
+- Updated changes migrated after initial migration: NOT WORKING
 
 The program will migrate custom emoji from Discord servers to target Fluxer servers. 
 
@@ -186,7 +232,10 @@ If the emoji of the same name already exists on the target server, it will skip 
 ## Messages to Channels & Message Attachment
 
 - Initial migration: DONE
-- Updated changes migrated after initial migration: UNTESTED
+- Updated changes migrated after initial migration:
+  - CREATE new message: NOT WORKING
+  - UPDATE existing messages: NOT WORKING
+  - DELETE messages from Fluxer, after their origin source deleted them: UNTESTED
 
 Recently received Fluxer.py library to support with messages with attachments.
 
@@ -210,27 +259,30 @@ This edge-case needs to be handled.
 
 Feature to masquerade as origin server user when exporting message to target server.
 
-- Initial migration: UNTESTED
-- Updated changes migrated after initial migration: UNTESTED
+- Initial migration: DONE
+- Updated changes migrated after initial migration:
+  - CREATE new message: PARTIAL
+    - Specifically will append a new message to a channel IF nothing else has been previously deleted from the post-exported Fluxer channel
+    - FAIL: If deleting a previously existing message from Discord, any later new messages will not be migrated 
+  - UPDATE existing messages: NOT WORKING
+  - DELETE messages from Fluxer, after their origin source deleted them: UNTESTED
 
 ## Pinned Messages / Pins
 
-- Initial migration: UNTESTED
-- Updated changes migrated after initial migration: UNTESTED
+- Initial migration: DONE
+- Updated changes migrated after initial migration: BROKEN
   - Pinned message updates (removal or promotion, plus new messages that have been pinned): UNTESTED
 - Preserve pins in threads: Not possible to implement until threading is implemented: UNTESTED
 
 
 ## "Reply-to" Linkage Preserving
 
-- Initial migration: UNTESTED
+- Initial migration: DONE
 - Updated changes migrated after initial migration: UNTESTED
-
 
 Reply-to links are preserved, if possible, during the migration process.
 
 DEVELOPER NOTES: The script implements message id tracking for both origin and target servers. When the script migrates a message from Discord, it tracks the discord-message-id. When migrating and creating a Fluxer message from that migration, the script also tracks the fluxer-message-ID of the message, so that. Thus when the migrator encounters a later Discord message which has a reply-to-link to a prior Discord message, it can first look at the discord-message-id within the script's own database tracking. Then it will find the associated fluxer-message-ID. Now when migrating this latest discord message which has a reply-to link, the migrator will create a new fluxer message that uses the fluxer-message-reply-to system to target the correct prior message.
-
   
 # Not Supported Features
 

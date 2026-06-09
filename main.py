@@ -3,7 +3,7 @@ import argparse
 import traceback
 
 from config import load_config
-from migration_tool_safe import MigrationTool  # use the patched safe version
+from migration_tool import MigrationTool  # use the patched safe version
 
 import logging
 

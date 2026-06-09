@@ -18,7 +18,7 @@ class MigrationTool:
     def __init__(self, config: AppConfig):
         self.config = config
         self.discord_client = DiscordClient(config.discord_token)
-        self.fluxer_client = FluxerClient(config.fluxer_token, config.fluxer_server_id)
+        self.fluxer_client = FluxerClient(config.fluxer_token, config.fluxer_server_id, config.user_mappings)
         self.db = StateManager(STATE_DB_FILE)
         self.fluxer_emoji_map = {}
 
@@ -133,10 +133,10 @@ class MigrationTool:
                     # Determine the Fluxer channel type that this Discord channel *would be created as*
                     fluxer_type_for_comparison = None
                     if discord_channel_type_enum == discord.ChannelType.text:
-                        fluxer_type_for_comparison = ChannelType.text.name.lower() # 'text'
+                        fluxer_type_for_comparison = ChannelType.GUILD_TEXT.name.lower().replace('guild_', '') # 'text'
                     elif discord_channel_type_enum == discord.ChannelType.voice:
-                        # Discord voice channels are created as Fluxer text channels
-                        fluxer_type_for_comparison = ChannelType.text.name.lower() # 'text'
+                        # Discord voice channels are created as Fluxer voice channels
+                        fluxer_type_for_comparison = ChannelType.GUILD_VOICE.name.lower().replace('guild_', '') # 'voice'
 
                     if not fluxer_type_for_comparison:
                         print(f"  Could not determine Fluxer type for Discord channel '{d_channel['name']}'. Skipping.")
@@ -156,7 +156,7 @@ class MigrationTool:
                         print(f"  [{i+1}/{len(channel_list)}] {discord_channel_type_enum.name.capitalize()} Channel '{d_channel['name']}': Creating on Fluxer...")
                         r_channel = await self.fluxer_client._create_fluxer_channel_from_discord(d_channel)
                         if r_channel:
-                            self.db.store_channel_mapping(d_channel['id'], r_channel['id'])
+                            self.db.store_channel_mapping(d_channel['id'], r_channel.id)
                         else:
                             print(f"  Warning: Failed to create Fluxer channel for Discord channel '{d_channel['name']}'.")
 
@@ -243,7 +243,7 @@ class MigrationTool:
 
             if emoji_data:
                 r_emoji = await self.fluxer_client.create_emoji(
-                    server_id=self.config.fluxer_server_id,
+                    guild_id=self.config.fluxer_server_id,
                     name=fluxer_emoji_name,
                     file_data=emoji_data
                 )
@@ -329,18 +329,17 @@ class MigrationTool:
                             for attachment in d_message['attachments']:
                                 file_data = await self.discord_client.download_attachment(attachment['url'])
                                 if file_data:
-                                    uploaded_file = await self.fluxer_client.upload_attachment(file_data, attachment['filename'], tag="attachments")
-                                    if uploaded_file:
-                                        fluxer_attachments.append(uploaded_file['id'])
-                                        print(f"      Uploaded attachment {attachment['filename']} to Fluxer with ID {uploaded_file['id']}")
-                                    else:
-                                        print(f"      Warning: Failed to upload attachment {attachment['filename']}.")
+                                    fluxer_attachments.append({
+                                        "filename": attachment['filename'],
+                                        "data": file_data
+                                    })
+                                    print(f"      Downloaded attachment {attachment['filename']} from Discord.")
                                 else:
                                     print(f"      Warning: Failed to download attachment {attachment['filename']} from Discord.")
 
                             fluxer_reply_to_id = None
                             if d_message['reply_to_discord_id']:
-                                fluxer_reply_to_id = self.db.get_revolt_message_id(d_message['reply_to_discord_id'])
+                                fluxer_reply_to_id = self.db.get_fluxer_message_id(d_message['reply_to_discord_id'])
                                 if not fluxer_reply_to_id:
                                     print(f"      Warning: Could not find Fluxer message ID for Discord reply ID {d_message['reply_to_discord_id']}. Reply will not be linked.")
 
@@ -360,23 +359,20 @@ class MigrationTool:
                                     print(f"      Skipping Discord message {d_message['id']} as it has no content, no successful attachments, and no reactions.")
                                     continue
 
-                            # Always include author and timestamp for context
-                            message_content_for_fluxer = f"**{author_name}** at {d_message['timestamp']}:\n{current_discord_content}"
-
-                            # Use masquerade if desired for a more authentic look
-                            masquerade_name = d_message['author']['username']
-                            masquerade_avatar = d_message['author']['avatar_url']
-
                             # --- Handle Message Edits or New Messages ---
                             db_entry = self.db.get_message_details_by_discord_id(d_message['id']) # Re-fetch to ensure current state
                             if db_entry: # Message already exists in our database, check for edits
-                                stored_fluxer_id = db_entry['revolt_id']
+                                stored_fluxer_id = db_entry['fluxer_id']
                                 stored_content = db_entry['original_discord_content']
                                 stored_attachments = db_entry['original_discord_attachments']
 
                                 # Compare current Discord state with stored state
                                 if current_discord_content != stored_content or set(current_discord_attachment_urls) != set(stored_attachments):
                                     print(f"      Discord message {d_message['id']} has been edited. Updating Fluxer message {stored_fluxer_id}...")
+                                    
+                                    # Prepare content for edit
+                                    message_content_for_fluxer = f"**{author_name}** at {d_message['timestamp']}:\n{current_discord_content}"
+
                                     edit_success = await self.fluxer_client.edit_message(
                                         channel_id=fluxer_channel_id,
                                         message_id=stored_fluxer_id,
@@ -386,9 +382,9 @@ class MigrationTool:
                                     if edit_success:
                                         self.db.store_message_mapping( # Update DB with new content/attachments
                                             discord_message_id=d_message['id'],
-                                            revolt_message_id=stored_fluxer_id,
+                                            fluxer_message_id=stored_fluxer_id,
                                             discord_channel_id=discord_channel_id,
-                                            revolt_channel_id=fluxer_channel_id,
+                                            fluxer_channel_id=fluxer_channel_id,
                                             original_discord_content=current_discord_content,
                                             original_discord_attachments=current_discord_attachment_urls
                                         )
@@ -401,20 +397,18 @@ class MigrationTool:
                             else: # New message
                                 r_message = await self.fluxer_client.send_message(
                                     channel_id=fluxer_channel_id,
-                                    content=message_content_for_fluxer,
+                                    content=current_discord_content,
                                     attachments=fluxer_attachments,
-                                    reply_to_id=fluxer_reply_to_id,
-                                    masquerade_name=masquerade_name,
-                                    masquerade_avatar=masquerade_avatar
+                                    author_name=author_name
                                 )
 
                                 if r_message:
                                     fluxer_message_id = r_message['id']
                                     self.db.store_message_mapping(
                                         discord_message_id=d_message['id'],
-                                        revolt_message_id=fluxer_message_id,
+                                        fluxer_message_id=fluxer_message_id,
                                         discord_channel_id=discord_channel_id,
-                                        revolt_channel_id=fluxer_channel_id,
+                                        fluxer_channel_id=fluxer_channel_id,
                                         original_discord_content=current_discord_content,
                                         original_discord_attachments=current_discord_attachment_urls
                                     )
@@ -483,7 +477,7 @@ class MigrationTool:
             try:
                 discord_pinned_to_fluxer = {}
                 for d_id in discord_current_pinned_set:
-                    r_id = self.db.get_revolt_message_id(d_id)
+                    r_id = self.db.get_fluxer_message_id(d_id)
                     if r_id:
                         discord_pinned_to_fluxer[d_id] = r_id
                 for d_id, r_id in discord_pinned_to_fluxer.items():
@@ -523,18 +517,20 @@ class MigrationTool:
                         for att in d_msg['attachments']:
                             file_data = await self.discord_client.download_attachment(att['url'])
                             if file_data:
-                                uploaded_file = await self.fluxer_client.upload_attachment(file_data, att['filename'], tag="attachments")
-                                if uploaded_file:
-                                    new_fluxer_attachments.append(uploaded_file['id'])
-                                    print(f"    Uploaded attachment {att['filename']} -> Fluxer {uploaded_file['id']}")
-                                else:
-                                    print(f"    Warning: Failed to upload attachment {att['filename']} during edit handling.")
+                                new_fluxer_attachments.append({
+                                    "filename": att['filename'],
+                                    "data": file_data
+                                })
+                                print(f"    Downloaded attachment {att['filename']} for edit.")
                             else:
                                 print(f"    Warning: Failed to download attachment {att['filename']} during edit handling.")
                         author_name = d_msg['author']['username']
                         if d_msg['author'].get('discriminator') and d_msg['author']['discriminator'] != "0":
                             author_name += f"#{d_msg['author']['discriminator']}"
+                        
+                        # For edits, we keep the original format with timestamp for context.
                         message_content_for_fluxer = f"**{author_name}** at {d_msg['timestamp']}:\n{current_content}"
+                        
                         edit_success = await self.fluxer_client.edit_message(
                             channel_id=fluxer_channel_id,
                             message_id=fluxer_id_in_db,
@@ -544,9 +540,9 @@ class MigrationTool:
                         if edit_success:
                             self.db.store_message_mapping(
                                 discord_message_id=discord_id_in_db,
-                                revolt_message_id=fluxer_id_in_db,
+                                fluxer_message_id=fluxer_id_in_db,
                                 discord_channel_id=discord_channel_id,
-                                revolt_channel_id=fluxer_channel_id,
+                                fluxer_channel_id=fluxer_channel_id,
                                 original_discord_content=current_content,
                                 original_discord_attachments=current_attachment_urls
                             )

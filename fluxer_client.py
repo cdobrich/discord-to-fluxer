@@ -274,7 +274,7 @@ class FluxerClient:
                     ),
                     timeout=UPLOAD_TIMEOUT
                 )
-                print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {message_data.get('id')}")
+                print(f"Fluxer: Successfully sent message to channel {channel_id}. Message ID: {getattr(message_data, 'id', None)}")
                 return message_data
             except asyncio.TimeoutError:
                 print(f"Fluxer: Timeout sending message to channel {channel_id}. Attempt {attempt + 1}/{max_retries}")

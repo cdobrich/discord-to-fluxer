@@ -466,13 +466,18 @@ class FluxerClient:
 
     async def apply_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str) -> bool:
         """
-        Applies an emoji reaction to a Fluxer message.
+        Applies a reaction emoji to a message in a Fluxer channel.
         """
         print(f"Fluxer: Reacting with '{emoji_id_or_name}' to message {message_id}...")
         try:
+            # Construct payload according to Fluxer API specs
+            # Ensure we only pass TWO positional arguments: method and route.
+            payload = {"emoji": str(emoji_id_or_name)}
+
             await self.fluxer_bot._http.request(
-                "PUT",
-                f"/channels/{channel_id}/messages/{message_id}/reactions/{emoji_id_or_name}"
+                "POST",
+                f"/channels/{channel_id}/messages/{message_id}/reactions",
+                json=payload
             )
             return True
         except Exception as e:
@@ -481,18 +486,38 @@ class FluxerClient:
 
     async def remove_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str) -> bool:
         """
-        Removes an emoji reaction from a Fluxer message.
+        Removes a reaction emoji from a message in a Fluxer channel.
         """
         print(f"Fluxer: Removing reaction '{emoji_id_or_name}' from message {message_id}...")
         try:
+            # We use query parameters or JSON body depending on Fluxer spec, passed as kwargs
+            payload = {"emoji": str(emoji_id_or_name)}
             await self.fluxer_bot._http.request(
                 "DELETE",
-                f"/channels/{channel_id}/messages/{message_id}/reactions/{emoji_id_or_name}"
+                f"/channels/{channel_id}/messages/{message_id}/reactions",
+                json=payload
             )
             return True
         except Exception as e:
             print(f"Fluxer: Error removing reaction {emoji_id_or_name}: {e}")
             return False
+
+    async def get_message_reactions(self, channel_id: str, message_id: str) -> list:
+        """
+        Fetches the reactions currently present on a specific Fluxer message.
+        """
+        try:
+            # Fetch message data to read its current reaction state
+            response = await self.fluxer_bot._http.request(
+                "GET",
+                f"/channels/{channel_id}/messages/{message_id}"
+            )
+            if response and "reactions" in response:
+                return response["reactions"]
+            return []
+        except Exception as e:
+            print(f"Fluxer: Error fetching reactions for message {message_id}: {e}")
+            return []
 
     async def delete_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
         """
@@ -550,17 +575,32 @@ class FluxerClient:
 
     async def get_channel_pinned_messages(self, channel_id: str) -> list[dict[str, Any]]:
         """
-        Fetches pinned messages from a Fluxer channel via direct HTTP call.
+        Fetches pinned messages from a Fluxer channel.
         """
-        print(f"Fluxer: Fetching pinned messages for channel {channel_id}...")
+        print(f"Fluxer: Attempting to fetch pinned messages for channel {channel_id}...")
+        # The fluxer_bot object itself should have the get_pinned_messages method
+        # as per the library's API, not its internal _http client.
+        if not self.fluxer_bot:  # Check if fluxer_bot is initialized
+            print("Error: Fluxer bot client not initialized. Cannot fetch pinned messages.")
+            return []
+
         try:
-            pinned_data = await self.fluxer_bot._http.request(
-                "GET",
-                f"/channels/{channel_id}/pins"
+            pinned_messages = await asyncio.wait_for(
+                self.fluxer_bot.get_pinned_messages(channel_id),  # Corrected line
+                timeout=API_TIMEOUT
             )
-            return pinned_data if isinstance(pinned_data, list) else []
-        except Exception as e:
-            print(f"Fluxer: Error fetching pinned messages for channel {channel_id}: {e}")
+            print(f"Fluxer: Successfully fetched {len(pinned_messages)} pinned messages for channel {channel_id}.")
+            return pinned_messages
+        except asyncio.TimeoutError:
+            print(f"Fluxer: Timeout fetching pinned messages for channel {channel_id}.")
+            return []
+        except HTTPException as e:
+            print(
+                f"Fluxer: Error fetching pinned messages for channel {channel_id}: Status={e.status}, Code={e.code}, Message={e.message}")
+            return []
+        except Exception as e:  # Catch all other exceptions, including AttributeError
+            print(f"An unexpected error occurred fetching pinned messages: {e}")
+            traceback.print_exc()
             return []
 
     async def get_pinned_message_ids(self, channel_id: str) -> list[str]:
@@ -568,8 +608,7 @@ class FluxerClient:
         Fetches IDs of pinned messages from a Fluxer channel.
         """
         pinned_messages = await self.get_channel_pinned_messages(channel_id)
-        # Extract and return the message IDs
-        return [str(msg['id']) for msg in pinned_messages if 'id' in msg]
+        return [str(msg['id']) for msg in pinned_messages if isinstance(msg, dict) and 'id' in msg]
 
     async def pin_message(self, channel_id: str, message_id: str) -> bool:
         """

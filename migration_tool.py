@@ -2,7 +2,7 @@ import asyncio
 import os
 import re
 import traceback
-import yaml  # FIX: Moved to the top of the file
+import yaml
 
 import discord
 from fluxer.enums import ChannelType
@@ -50,10 +50,10 @@ class MigrationTool:
             # Stage 2: Migrate custom emojis (Moved earlier for potential message reaction features)
             await self.migrate_emojis()
 
-            # Stage 3: Migrate roles
+            # Stage 3: Migrate roles (placeholder for future implementation)
             await self.migrate_roles()
 
-            # Stage 4: Migrate members
+            # Stage 4: Migrate members (placeholder for future implementation)
             await self.migrate_members()
 
             # Stage 5: Migrate messages
@@ -178,36 +178,14 @@ class MigrationTool:
         print("--- STAGE: Server structure setup complete ---")
 
     async def migrate_roles(self):
-        """Migrates Discord roles to Fluxer roles."""
-        print("\n--- STAGE: Migrating roles ---")
-        try:
-            # Check if role features exist on clients
-            if hasattr(self.discord_client, 'get_guild_roles') and hasattr(self.fluxer_client, 'create_role'):
-                discord_roles = await self.discord_client.get_guild_roles(self.config.discord_guild_id)
-                print(f"  Found {len(discord_roles)} roles to process.")
-                for role in discord_roles:
-                    # Ignore managed/default roles like @everyone if necessary
-                    if role.get('managed') or role.get('name') == '@everyone':
-                        continue
-                    print(f"    Migrating role '{role['name']}'...")
-                    await self.fluxer_client.create_role(guild_id=self.config.fluxer_server_id, name=role['name'])
-            else:
-                print("  Role migration methods are not fully supported by clients yet. Skipping.")
-        except Exception as e:
-            print(f"  Warning: Error migrating roles: {e}")
+        """Placeholder for migrating Discord roles to Fluxer roles."""
+        print("\n--- STAGE: Migrating roles (Not yet implemented) ---")
+        pass
 
     async def migrate_members(self):
-        """Migrates Discord members to Fluxer."""
-        print("\n--- STAGE: Migrating members ---")
-        try:
-            if hasattr(self.discord_client, 'get_guild_members'):
-                discord_members = await self.discord_client.get_guild_members(self.config.discord_guild_id)
-                print(f"  Found {len(discord_members)} total members in Discord server.")
-                # Member migration typically involves syncing nicknames or database user entries
-            else:
-                print("  Member details lookup not fully supported by client yet. Skipping.")
-        except Exception as e:
-            print(f"  Warning: Error migrating members: {e}")
+        """Placeholder for migrating Discord members to Fluxer."""
+        print("\n--- STAGE: Migrating members (Not yet implemented) ---")
+        pass
 
     async def migrate_emojis(self):
         """
@@ -275,6 +253,56 @@ class MigrationTool:
 
         print("--- STAGE: Custom emoji migration complete ---")
 
+    async def _sync_message_reactions(self, fluxer_channel_id: str, fluxer_message_id: str, discord_reactions: list):
+        """
+        Reconciles delta states for custom or unicode emojis between Discord and Fluxer messages.
+        """
+        if not discord_reactions:
+            discord_reactions = []
+
+        # Map target identifiers from Discord structure
+        target_identifiers = set()
+        for reaction in discord_reactions:
+            if reaction['type'] == 'custom':
+                fluxer_id = self.fluxer_emoji_map.get(reaction['id'])
+                if fluxer_id:
+                    target_identifiers.add(str(fluxer_id))
+                else:
+                    print(
+                        f"        Warning: Custom Discord emoji '{reaction.get('name')}' (ID: {reaction.get('id')}) not found in Fluxer emoji map during sync.")
+            elif reaction['type'] == 'unicode':
+                target_identifiers.add(reaction['name'])
+
+        # Query existing layout from Fluxer client to figure out delta parameters
+        if hasattr(self.fluxer_client, 'get_message_reactions'):
+            current_fluxer_reactions = await self.fluxer_client.get_message_reactions(fluxer_channel_id,
+                                                                                      fluxer_message_id)
+            current_identifiers = set()
+            for r in current_fluxer_reactions:
+                ident = str(r.get('emoji_id') or r.get('name') or r.get('emoji', ''))
+                if ident:
+                    current_identifiers.add(ident)
+        else:
+            current_identifiers = set()
+
+        # Add missing items safely using keyword args for payload handling
+        for ident in target_identifiers - current_identifiers:
+            success = await self.fluxer_client.apply_reaction(fluxer_channel_id, fluxer_message_id, ident)
+            if not success:
+                print(
+                    f"        Warning: Failed to apply sync reaction '{ident}' to Fluxer message {fluxer_message_id}.")
+            await asyncio.sleep(0.1)
+
+        # Drop extra elements if executing an explicit update synchronization sweep
+        if current_identifiers:
+            for ident in current_identifiers - target_identifiers:
+                if hasattr(self.fluxer_client, 'remove_reaction'):
+                    success = await self.fluxer_client.remove_reaction(fluxer_channel_id, fluxer_message_id, ident)
+                    if not success:
+                        print(
+                            f"        Warning: Failed to remove extra sync reaction '{ident}' from Fluxer message {fluxer_message_id}.")
+                    await asyncio.sleep(0.1)
+
     async def migrate_messages(self):
         """
         Migrates messages from Discord channels to corresponding Fluxer channels.
@@ -311,182 +339,162 @@ class MigrationTool:
 
             while has_more_messages:
                 try:
-                    try:
-                        discord_messages = await self.discord_client.get_channel_messages(
-                            channel_id=discord_channel_id,
-                            after_message_id=last_migrated_discord_message_id,
-                            limit=message_fetch_limit
-                        )
+                    discord_messages = await self.discord_client.get_channel_messages(
+                        channel_id=discord_channel_id,
+                        after_message_id=last_migrated_discord_message_id,
+                        limit=message_fetch_limit
+                    )
 
-                        if not discord_messages:
-                            full_discord_fetch_ok = False
-                            has_more_messages = False
-                            print(f"  No new messages found for Discord channel {discord_channel_id}.")
-                            break
+                    if not discord_messages:
+                        has_more_messages = False
+                        print(f"  No new messages found for Discord channel {discord_channel_id}.")
+                        break
 
-                        for i, d_message in enumerate(discord_messages):
-                            print(
-                                f"    [{i + 1}/{len(discord_messages)}] Processing Discord message {d_message['id']}...")
-                            messages_currently_in_discord_channel.add(d_message['id'])
+                    for i, d_message in enumerate(discord_messages):
+                        print(
+                            f"    [{i + 1}/{len(discord_messages)}] Processing Discord message {d_message['id']}...")
+                        messages_currently_in_discord_channel.add(d_message['id'])
 
-                            current_discord_content = d_message['content'] if d_message['content'] else ""
-                            current_discord_attachment_urls = [att['url'] for att in d_message['attachments']]
+                        # FIX: Explicitly initialize content and attachment trackers at the start of loop cycle
+                        # to safeguard against unexpected inner loop logic jumps or assignment failures.
+                        current_discord_content = d_message['content'] if d_message['content'] else ""
+                        current_discord_attachment_urls = [att['url'] for att in d_message['attachments']]
 
-                            fluxer_attachments = []
-                            for attachment in d_message['attachments']:
-                                file_data = await self.discord_client.download_attachment(attachment['url'])
-                                if file_data:
-                                    fluxer_attachments.append({
-                                        "filename": attachment['filename'],
-                                        "data": file_data
-                                    })
-                                    print(f"      Downloaded attachment {attachment['filename']} from Discord.")
-                                else:
-                                    print(
-                                        f"      Warning: Failed to download attachment {attachment['filename']} from Discord.")
+                        fluxer_attachments = []
+                        for attachment in d_message['attachments']:
+                            file_data = await self.discord_client.download_attachment(attachment['url'])
+                            if file_data:
+                                fluxer_attachments.append({
+                                    "filename": attachment['filename'],
+                                    "data": file_data
+                                })
+                                print(f"      Downloaded attachment {attachment['filename']} from Discord.")
+                            else:
+                                print(
+                                    f"      Warning: Failed to download attachment {attachment['filename']} from Discord.")
 
-                            fluxer_reply_to_id = None
-                            if d_message['reply_to_discord_id']:
-                                fluxer_reply_to_id = self.db.get_fluxer_message_id(d_message['reply_to_discord_id'])
-                                if not fluxer_reply_to_id:
-                                    print(
-                                        f"      Warning: Could not find Fluxer message ID for Discord reply ID {d_message['reply_to_discord_id']}. Reply will not be linked.")
+                        fluxer_reply_to_id = None
+                        if d_message['reply_to_discord_id']:
+                            fluxer_reply_to_id = self.db.get_fluxer_message_id(d_message['reply_to_discord_id'])
+                            if not fluxer_reply_to_id:
+                                print(
+                                    f"      Warning: Could not find Fluxer message ID for Discord reply ID {d_message['reply_to_discord_id']}. Reply will not be linked.")
 
-                            author_name = d_message['author']['username']
-                            if d_message['author']['discriminator'] != "0":
-                                author_name += f"#{d_message['author']['discriminator']}"
+                        author_name = d_message['author']['username']
+                        if d_message['author']['discriminator'] != "0":
+                            author_name += f"#{d_message['author']['discriminator']}"
 
-                            if not current_discord_content and not fluxer_attachments and not d_message['reactions']:
-                                if d_message['id'] in discord_current_pinned_set:
-                                    current_discord_content = "[Pinned message - original content was empty]"
-                                    print(
-                                        f"      Adding placeholder content for pinned Discord message {d_message['id']} to ensure migration.")
-                                else:
-                                    print(
-                                        f"      Skipping Discord message {d_message['id']} as it has no content, no successful attachments, and no reactions.")
-                                    continue
+                        if not current_discord_content and not fluxer_attachments and not d_message['reactions']:
+                            if d_message['id'] in discord_current_pinned_set:
+                                current_discord_content = "[Pinned message - original content was empty]"
+                                print(
+                                    f"      Adding placeholder content for pinned Discord message {d_message['id']} to ensure migration.")
+                            else:
+                                print(
+                                    f"      Skipping Discord message {d_message['id']} as it has no content, no successful attachments, and no reactions.")
+                                continue
 
-                            # --- Handle Message Edits or New Messages ---
-                            db_entry = self.db.get_message_details_by_discord_id(d_message['id'])
-                            if db_entry:
-                                stored_fluxer_id = db_entry['fluxer_id']
-                                stored_content = db_entry['original_discord_content']
-                                stored_attachments = db_entry['original_discord_attachments']
+                        # --- Handle Message Edits or New Messages ---
+                        db_entry = self.db.get_message_details_by_discord_id(d_message['id'])
+                        if db_entry:
+                            stored_fluxer_id = db_entry['fluxer_id']
+                            stored_content = db_entry['original_discord_content']
+                            stored_attachments = db_entry['original_discord_attachments']
 
-                                if current_discord_content != stored_content or set(
-                                        current_discord_attachment_urls) != set(stored_attachments):
-                                    print(
-                                        f"      Discord message {d_message['id']} has been edited. Updating Fluxer message {stored_fluxer_id}...")
-                                    message_content_for_fluxer = f"**{author_name}** at {d_message['timestamp']}:\n{current_discord_content}"
+                            if current_discord_content != stored_content or set(
+                                    current_discord_attachment_urls) != set(stored_attachments):
+                                print(
+                                    f"      Discord message {d_message['id']} has been edited. Updating Fluxer message {stored_fluxer_id}...")
+                                message_content_for_fluxer = f"**{author_name}** at {d_message['timestamp']}:\n{current_discord_content}"
 
-                                    edit_success = await self.fluxer_client.edit_message(
-                                        channel_id=fluxer_channel_id,
-                                        message_id=stored_fluxer_id,
-                                        new_content=message_content_for_fluxer,
-                                        new_attachments=fluxer_attachments
-                                    )
-                                    if edit_success:
-                                        self.db.store_message_mapping(
-                                            discord_message_id=d_message['id'],
-                                            fluxer_message_id=stored_fluxer_id,
-                                            discord_channel_id=discord_channel_id,
-                                            fluxer_channel_id=fluxer_channel_id,
-                                            original_discord_content=current_discord_content,
-                                            original_discord_attachments=current_discord_attachment_urls  # FIX: Corrected variable name from current_attachment_urls
-                                        )
-                                        print(f"      Successfully updated Fluxer message {stored_fluxer_id}.")
-                                    else:
-                                        print(f"      Warning: Failed to update Fluxer message {stored_fluxer_id}.")
-                                else:
-                                    print(f"      Discord message {d_message['id']} unchanged. Skipping edit.")
-
-                            else:  # New message
-                                r_message = await self.fluxer_client.send_message(
+                                edit_success = await self.fluxer_client.edit_message(
                                     channel_id=fluxer_channel_id,
-                                    content=current_discord_content,
-                                    attachments=fluxer_attachments,
-                                    author_name=author_name
+                                    message_id=stored_fluxer_id,
+                                    new_content=message_content_for_fluxer,
+                                    new_attachments=fluxer_attachments
                                 )
-
-                                if r_message:
-                                    fluxer_message_id = r_message['id']
+                                if edit_success:
                                     self.db.store_message_mapping(
                                         discord_message_id=d_message['id'],
-                                        fluxer_message_id=fluxer_message_id,
+                                        fluxer_message_id=stored_fluxer_id,
                                         discord_channel_id=discord_channel_id,
                                         fluxer_channel_id=fluxer_channel_id,
                                         original_discord_content=current_discord_content,
-                                        original_discord_attachments=current_discord_attachment_urls  # FIX: Corrected variable name from current_attachment_urls
+                                        original_discord_attachments=current_discord_attachment_urls
                                     )
-                                    last_migrated_discord_message_id = d_message['id']
-
-                                    # --- Apply Reactions ---
-                                    if d_message['reactions']:
-                                        print(
-                                            f"      Applying {len(d_message['reactions'])} reactions to Fluxer message {fluxer_message_id}...")
-                                        for reaction in d_message['reactions']:
-                                            fluxer_emoji_identifier = None
-                                            if reaction['type'] == 'custom':
-                                                fluxer_emoji_identifier = self.fluxer_emoji_map.get(reaction['id'])
-                                                if not fluxer_emoji_identifier:
-                                                    print(
-                                                        f"        Warning: Custom Discord emoji '{reaction['name']}' (ID: {reaction['id']}) not found in Fluxer emoji map. Skipping reaction.")
-                                                    continue
-                                            elif reaction['type'] == 'unicode':
-                                                fluxer_emoji_identifier = reaction['name']
-
-                                            if fluxer_emoji_identifier:
-                                                success = await self.fluxer_client.apply_reaction(
-                                                    channel_id=fluxer_channel_id,
-                                                    message_id=fluxer_message_id,
-                                                    emoji_id_or_name=fluxer_emoji_identifier
-                                                )
-                                                if not success:
-                                                    print(
-                                                        f"        Warning: Failed to apply reaction '{reaction.get('name', reaction.get('id'))}' to message {fluxer_message_id}.")
-                                                await asyncio.sleep(0.1)
-
-                                    # --- Pin new message if it was pinned in Discord ---
-                                    if d_message['id'] in discord_current_pinned_set:
-                                        print(
-                                            f"      Discord message {d_message['id']} is pinned. Attempting to pin Fluxer message {fluxer_message_id}...")
-                                        pin_success = await self.fluxer_client.pin_message(fluxer_channel_id,
-                                                                                           fluxer_message_id)
-                                        if not pin_success:
-                                            print(
-                                                f"      Warning: Failed to pin newly migrated Fluxer message {fluxer_message_id}.")
-
+                                    print(f"      Successfully updated Fluxer message {stored_fluxer_id}.")
                                 else:
-                                    print(f"      Error: Failed to send message {d_message['id']} to Fluxer.")
+                                    print(f"      Warning: Failed to update Fluxer message {stored_fluxer_id}.")
+                            else:
+                                print(f"      Discord message {d_message['id']} unchanged. Skipping edit.")
 
-                            await asyncio.sleep(self.config.delay_between_messages_seconds)
+                            # Delta updates to reactions on existing/edited entry processing loops
+                            await self._sync_message_reactions(fluxer_channel_id, stored_fluxer_id,
+                                                               d_message['reactions'])
 
-                        if len(discord_messages) < message_fetch_limit:
-                            has_more_messages = False
+                        else:  # New message
+                            r_message = await self.fluxer_client.send_message(
+                                channel_id=fluxer_channel_id,
+                                content=current_discord_content,
+                                attachments=fluxer_attachments,
+                                author_name=author_name
+                            )
 
-                        if has_more_messages:
-                            print(
-                                f"  Continuing to fetch next batch of messages for channel {discord_channel_id} from {last_migrated_discord_message_id}...")
+                            if r_message:
+                                fluxer_message_id = r_message['id']
+                                self.db.store_message_mapping(
+                                    discord_message_id=d_message['id'],
+                                    fluxer_message_id=fluxer_message_id,
+                                    discord_channel_id=discord_channel_id,
+                                    fluxer_channel_id=fluxer_channel_id,
+                                    original_discord_content=current_discord_content,
+                                    original_discord_attachments=current_attachment_urls
+                                )
+                                last_migrated_discord_message_id = d_message['id']
 
-                        await asyncio.sleep(self.config.delay_between_channels_seconds)
-                    except Exception as e:
-                        print(f'Error during message fetch loop: {e}')
-                        full_discord_fetch_ok = False
+                                # --- Apply Reactions via Robust Reconciler Helper ---
+                                if d_message['reactions']:
+                                    print(
+                                        f"      Applying {len(d_message['reactions'])} reactions to Fluxer message {fluxer_message_id}...")
+                                    await self._sync_message_reactions(fluxer_channel_id, fluxer_message_id,
+                                                                       d_message['reactions'])
+
+                                # --- Pin new message if it was pinned in Discord ---
+                                if d_message['id'] in discord_current_pinned_set:
+                                    print(
+                                        f"      Discord message {d_message['id']} is pinned. Attempting to pin Fluxer message {fluxer_message_id}...")
+                                    pin_success = await self.fluxer_client.pin_message(fluxer_channel_id,
+                                                                                       fluxer_message_id)
+                                    if not pin_success:
+                                        print(
+                                            f"      Warning: Failed to pin newly migrated Fluxer message {fluxer_message_id}.")
+
+                            else:
+                                print(f"      Error: Failed to send message {d_message['id']} to Fluxer.")
+
+                        await asyncio.sleep(self.config.delay_between_messages_seconds)
+
+                    if len(discord_messages) < message_fetch_limit:
                         has_more_messages = False
-                        break
 
+                    if has_more_messages:
+                        print(
+                            f"  Continuing to fetch next batch of messages for channel {discord_channel_id} from {last_migrated_discord_message_id}...")
+
+                    await asyncio.sleep(self.config.delay_between_channels_seconds)
                 except Exception as e:
                     print(f'Error during message fetch loop: {e}')
+                    traceback.print_exc()
                     full_discord_fetch_ok = False
                     has_more_messages = False
                     break
+
             print(f"  Finished migrating messages for Discord channel {discord_channel_id}.")
 
             # --- Reconcile pinned messages (Discord -> Fluxer) ---
             try:
                 print(f"Reconciling pinned messages for Fluxer channel {fluxer_channel_id}...")
 
-                # FIX: Renamed this variable to prevent collision/leakage to the upper while loop structure
                 discord_pinned_str_set = {str(m_id) for m_id in discord_current_pinned_ids}
                 fluxer_currently_pinned_ids = await self.fluxer_client.get_pinned_message_ids(fluxer_channel_id)
 
@@ -563,8 +571,11 @@ class MigrationTool:
                         else:
                             print(
                                 f"    Warning: Failed to edit Fluxer message {fluxer_id_in_db} for edited Discord message {discord_id_in_db}.")
+
+                    # Track historic changes to emoji configurations on already migrated channels
+                    await self._sync_message_reactions(fluxer_channel_id, fluxer_id_in_db, d_msg['reactions'])
             except Exception as e:
-                print(f"Error reconciling edits for channel {discord_channel_id}: {e}")
+                print(f"Error reconciling edits/reactions for channel {discord_channel_id}: {e}")
 
             # --- Handle Message Deletions ---
             if not full_discord_fetch_ok:

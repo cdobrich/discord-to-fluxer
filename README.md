@@ -329,6 +329,12 @@ Run the following:
 
 There are many warnings from the Discord sub-libraries, which is why we suppress them.
 
+# Troubleshooting / Errors
+
+During exporting (either Initial Run or Updating afterward), if using the `Masquerading` feature, if you encounter `HTTP error 401`, this likely means one of your user's masquerade tokens has been expired by Fluxer (possibly from excess recent use) .
+
+SOLUTION: For the affected user, logout of Fluxer and login again, then recapture the token data, save it appropriately for the exporter program, before retrying the export program.
+
 ## More Testing to Add
 
 - make sure to export first post in channel

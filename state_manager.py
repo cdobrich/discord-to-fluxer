@@ -34,44 +34,33 @@ class StateManager:
     def create_tables(self):
         """Creates the necessary tables for the migration process using Fluxer naming."""
         cursor = self.conn.cursor()
-
-        # 1. Channel Mappings
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS channel_mappings (
                 discord_id TEXT PRIMARY KEY,
                 fluxer_id TEXT NOT NULL
             )
         ''')
-
-        # 2. Message Mappings
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS message_mappings (
                 discord_id TEXT PRIMARY KEY,
                 fluxer_id TEXT NOT NULL,
-                channel_discord_id TEXT NOT NULL,
-                channel_fluxer_id TEXT NOT NULL,
-                content TEXT,
-                attachments TEXT
+                original_discord_content TEXT,
+                original_discord_attachments TEXT
             )
         ''')
-
-        # 3. Emoji Mappings
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS emoji_mappings (
                 discord_id TEXT PRIMARY KEY,
                 fluxer_id TEXT NOT NULL,
-                name TEXT NOT NULL
+                name TEXT
             )
         ''')
-
-        # 4. Migration Status (Optional metadata tracking)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS migration_status (
-                key TEXT PRIMARY KEY,
-                value TEXT
+                channel_id TEXT PRIMARY KEY,
+                last_discord_message_id TEXT NOT NULL
             )
         ''')
-
         self.conn.commit()
 
     def store_channel_mapping(self, discord_id: str, fluxer_id: str):
@@ -100,24 +89,24 @@ class StateManager:
         ''', (str(discord_channel_id),))
         return cursor.fetchall()
 
-    def store_message_mapping(self, discord_message_id, fluxer_message_id, discord_channel_id, fluxer_channel_id,
-                              original_discord_content, original_discord_attachments):
-        """Stores a message mapping for tracking edits, deletes, and replies."""
+    def store_message_mapping(self, discord_id, fluxer_id, original_discord_content="",
+                              original_discord_attachments=None):
+        if original_discord_attachments is None:
+            original_discord_attachments = []
+        attachments_json = json.dumps(original_discord_attachments)
         cursor = self.conn.cursor()
         cursor.execute('''
-            INSERT INTO message_mappings (discord_id, fluxer_id, channel_discord_id, channel_fluxer_id, content, attachments)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(discord_id) DO UPDATE SET 
-                content = excluded.content,
-                attachments = excluded.attachments
+            INSERT INTO message_mappings (discord_id, fluxer_id, original_discord_content, original_discord_attachments)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(discord_id) DO UPDATE SET
+                fluxer_id = excluded.fluxer_id,
+                original_discord_content = excluded.original_discord_content,
+                original_discord_attachments = excluded.original_discord_attachments
         ''', (
-            str(discord_message_id),
-            str(fluxer_message_id),
-            str(discord_channel_id),
-            str(fluxer_channel_id),
+            str(discord_id),
+            str(fluxer_id),
             original_discord_content,
-            json.dumps(original_discord_attachments)
-        ))
+            attachments_json))
         self.conn.commit()
 
     def update_message_record(self, discord_id, content, attachments):
@@ -131,15 +120,24 @@ class StateManager:
         self.conn.commit()
 
     def get_last_migrated_message_id(self, discord_channel_id):
-        """Gets the highest migrated Discord message ID for a channel to resume migration."""
+        """Fetches the last successfully processed high-water mark message ID for a channel."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            'SELECT last_discord_message_id FROM migration_status WHERE channel_id = ?',
+            (str(discord_channel_id),)
+        )
+        row = cursor.fetchone()
+        return row['last_discord_message_id'] if row else None
+
+    def store_last_migrated_message_id(self, discord_channel_id, last_message_id):
+        """Updates the high-water mark message tracking state checkpoint."""
         cursor = self.conn.cursor()
         cursor.execute('''
-            SELECT discord_id FROM message_mappings 
-            WHERE channel_discord_id = ? 
-            ORDER BY CAST(discord_id AS INTEGER) DESC LIMIT 1
-        ''', (str(discord_channel_id),))
-        row = cursor.fetchone()
-        return row['discord_id'] if row else None
+            INSERT INTO migration_status (channel_id, last_discord_message_id)
+            VALUES (?, ?)
+            ON CONFLICT(channel_id) DO UPDATE SET last_discord_message_id = excluded.last_discord_message_id
+        ''', (str(discord_channel_id), str(last_message_id)))
+        self.conn.commit()
 
     def get_fluxer_message_id(self, discord_message_id):
         """Resolves a Fluxer ID from a Discord message ID (useful for replies)."""
@@ -155,17 +153,22 @@ class StateManager:
         row = cursor.fetchone()
         return row['discord_id'] if row else None
 
-    def get_message_details_by_discord_id(self, discord_message_id):
-        """Retrieves raw content and attachments stored for modification monitoring."""
+    def get_message_details_by_discord_id(self, discord_id):
         cursor = self.conn.cursor()
-        cursor.execute('SELECT fluxer_id, content, attachments FROM message_mappings WHERE discord_id = ?',
-                       (str(discord_message_id),))
+        cursor.execute(
+            'SELECT fluxer_id, original_discord_content, original_discord_attachments FROM message_mappings WHERE discord_id = ?',
+            (str(discord_id),))
         row = cursor.fetchone()
         if row:
+            try:
+                attachments = json.loads(row['original_discord_attachments']) if row[
+                    'original_discord_attachments'] else []
+            except Exception:
+                attachments = []
             return {
                 'fluxer_id': row['fluxer_id'],
-                'original_discord_content': row['content'],
-                'original_discord_attachments': json.loads(row['attachments']) if row['attachments'] else []
+                'original_discord_content': row['original_discord_content'],
+                'original_discord_attachments': attachments
             }
         return None
 

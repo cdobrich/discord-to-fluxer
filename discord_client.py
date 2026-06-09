@@ -156,9 +156,10 @@ class DiscordClient:
         Fetches messages from a Discord channel.
         Uses 'after' parameter for pagination and resumption.
         Messages are returned in chronological order.
-        Includes reactions.
+        Includes reactions and full structural fallback/safety filters.
         """
-        print(f"Discord: Fetching messages for channel {channel_id}, after {after_message_id if after_message_id else 'start of channel'} (limit: {limit})...")
+        print(
+            f"Discord: Fetching messages for channel {channel_id}, after {after_message_id if after_message_id else 'start of channel'} (limit: {limit})...")
         try:
             channel = self.client.get_channel(int(channel_id))
             if not channel:
@@ -182,16 +183,18 @@ class DiscordClient:
                     start_message = await channel.fetch_message(int(after_message_id))
                     print(f"Discord: Found 'after_message_id' {after_message_id}. Fetching messages after this point.")
                 except discord.NotFound:
-                    print(f"Warning: 'after_message_id' {after_message_id} not found in channel {channel_id}. Fetching from start of history and will filter manually.")
-                    start_message = None # Reset to None to fetch from beginning
+                    print(
+                        f"Warning: 'after_message_id' {after_message_id} not found in channel {channel_id}. Fetching from start of history and will filter manually.")
+                    start_message = None  # Reset to None to fetch from beginning
                 except discord.Forbidden:
-                    print(f"Warning: Bot lacks permissions to fetch 'after_message_id' {after_message_id}. Fetching from start of history and will filter manually.")
-                    start_message = None # Reset to None to fetch from beginning
-
+                    print(
+                        f"Warning: Bot lacks permissions to fetch 'after_message_id' {after_message_id}. Fetching from start of history and will filter manually.")
+                    start_message = None  # Reset to None to fetch from beginning
 
             # Fetch messages in chronological order (oldest_first=True)
             # If start_message is None, it fetches from the very beginning.
-            messages_fetched_raw = [msg async for msg in channel.history(limit=limit, after=start_message, oldest_first=True)]
+            messages_fetched_raw = [msg async for msg in
+                                    channel.history(limit=limit, after=start_message, oldest_first=True)]
 
             # Filter out messages that are older than or equal to the last migrated ID,
             # but only if a last_migrated_discord_message_id was actually provided.
@@ -200,13 +203,14 @@ class DiscordClient:
                 for message in messages_fetched_raw:
                     if int(message.id) > int(after_message_id):
                         filtered_messages.append(message)
-                print(f"Discord: Filtered {len(messages_fetched_raw) - len(filtered_messages)} messages older than {after_message_id}.")
+                print(
+                    f"Discord: Filtered {len(messages_fetched_raw) - len(filtered_messages)} messages older than {after_message_id}.")
                 messages_to_process = filtered_messages
             else:
                 messages_to_process = messages_fetched_raw
 
             for message in messages_to_process:
-                if message.webhook_id or message.author.bot: # Skip webhooks and other bots
+                if message.webhook_id or message.author.bot:  # Skip webhooks and other bots
                     continue
 
                 attachments_data = []
@@ -220,7 +224,8 @@ class DiscordClient:
                 reactions_data = []
                 for reaction in message.reactions:
                     emoji_info = {}
-                    if isinstance(reaction.emoji, discord.Emoji): # Custom emoji
+                    # Support both standard Guild Emojis and Partial/External Emojis
+                    if isinstance(reaction.emoji, (discord.Emoji, discord.PartialEmoji)):
                         emoji_info = {
                             "type": "custom",
                             "id": str(reaction.emoji.id),
@@ -228,10 +233,10 @@ class DiscordClient:
                             "animated": reaction.emoji.animated,
                             "url": str(reaction.emoji.url)
                         }
-                    elif isinstance(reaction.emoji, str): # Unicode emoji
+                    elif isinstance(reaction.emoji, str):  # Unicode emoji
                         emoji_info = {
                             "type": "unicode",
-                            "name": reaction.emoji # The actual unicode character
+                            "name": reaction.emoji  # The actual unicode character
                         }
 
                     if emoji_info:
@@ -251,7 +256,7 @@ class DiscordClient:
                     "content": message.content if message.content else "",
                     "timestamp": message.created_at.isoformat(),
                     "attachments": attachments_data,
-                    "reactions": reactions_data, # Added reactions data
+                    "reactions": reactions_data,
                     "reply_to_discord_id": reply_to_discord_id
                 })
 
@@ -296,6 +301,23 @@ class DiscordClient:
             traceback.print_exc()
             return []
 
+    async def get_pinned_message_ids(self, channel_id: str) -> list[str]:
+        """Fetches a list of pinned message IDs from a specific Discord channel context."""
+        await self._ready_event.wait()
+        try:
+            channel = self.client.get_channel(int(channel_id))
+            if not channel:
+                channel = await self.client.fetch_channel(int(channel_id))
+
+            if not hasattr(channel, 'pins'):
+                print(f"Discord: Channel {channel_id} type does not support pinned messages.")
+                return []
+
+            pins = await channel.pins()
+            return [str(msg.id) for msg in pins]
+        except Exception as e:
+            print(f"Discord: Error retrieving pinned message context index for channel {channel_id}: {e}")
+            return []
 
     async def download_attachment(self, url):
         """

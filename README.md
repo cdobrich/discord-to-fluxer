@@ -150,6 +150,10 @@ In your web-browser:
 1. Save it into a specific file with the .token extension.
 1. Edit your config.yaml to reflect your username and your masquerade token file.
 
+Perform export as normal from this point.
+
+If there are problems during export, the program will halt and write error message to the console output.
+
 #### Example config.yaml masquerade configuration
 
 ```

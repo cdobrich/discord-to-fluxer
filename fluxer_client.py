@@ -229,19 +229,24 @@ class FluxerClient:
 
     async def send_message(self, channel_id: str, content: str, attachments: list[dict[str, Any]] | None = None,
                            max_retries: int = 3, author_name: str | None = None, reply_to_id: str | None = None) -> \
-    dict[str, Any] | None:
+            dict[str, Any] | None:
         """
         Sends a message with optional attachments to a Fluxer channel.
         Attachments should be a list of dicts, each with 'filename' and 'data' (bytes).
         """
+        from fluxer.http import Route
+
         http_client = self.fluxer_bot._http
+        using_masquerade = False
+
         if author_name:
             masquerade_client = await self._get_masquerade_http(author_name)
             if masquerade_client:
                 http_client = masquerade_client
+                using_masquerade = True
                 print(f"Fluxer: Sending message as masqueraded user '{author_name}'.")
             else:
-                # Prepend username if no masquerade found
+                # Prepend username if no masquerade configuration was found in yaml mappings
                 content = f"{author_name}: {content}"
                 print(f"Fluxer: Sending message as bot (prepended '{author_name}: ').")
 
@@ -253,23 +258,39 @@ class FluxerClient:
 
         for attempt in range(max_retries):
             try:
-                # Prepare payload file list if attachments are provided
-                message_files = []
-                if attachments:
-                    print(f"Fluxer: Preparing to send {len(attachments)} attachments.")
-                    message_files = attachments
+                message_files = attachments if attachments else []
 
-                # FIX: Changing 'attachments' keyword argument to 'files'
-                # and ensuring reply_to matches the library structure
-                response = await http_client.send_message(
-                    channel_id=channel_id,
-                    content=content,
-                    files=message_files,  # Correct keyword parameter for attachments
-                    reply_to=reply_to_id
-                )
-                return response
+                # Route through high-level payload encoder if attachments are linked
+                if message_files:
+                    response = await http_client.send_message(
+                        channel_id=int(channel_id),
+                        content=content,
+                        files=message_files
+                    )
+                    return response
+                else:
+                    # Construct a standard JSON text payload dictionary matching Fluxer API specs
+                    payload = {"content": content}
+                    if reply_to_id:
+                        payload["reply_to"] = int(reply_to_id)
+
+                    route = Route("POST", "/channels/{channel_id}/messages", channel_id=int(channel_id))
+                    response = await http_client.request(route, json=payload)
+                    return response
 
             except HTTPException as e:
+                # Catch invalid/expired credentials during masquerade emulation and immediately halt
+                if e.status == 401 and using_masquerade:
+                    print("\n" + "=" * 80)
+                    print("CRITICAL AUTHENTICATION FAILURE - EXPORTER HALTED")
+                    print(
+                        f"The masquerade user token for configuration name '{author_name}' threw a 401 Unauthorized error.")
+                    print("\nACTION REQUIRED:")
+                    print("Please logout and login again, then recapture their token data,")
+                    print("save it appropriately for the exporter program, before retrying.")
+                    print("=" * 80 + "\n")
+                    raise SystemExit(f"Migration aborted due to invalid credentials for user mapping: {author_name}")
+
                 if e.status == 429:
                     wait_time = 2 ** attempt
                     print(f"Fluxer: Rate limit hit. Waiting for {wait_time:.2f} seconds.")
@@ -281,6 +302,9 @@ class FluxerClient:
                 else:
                     print(f"Fluxer: Unhandled HTTP error {e.status}. Not retrying.")
                     return None
+            except SystemExit:
+                # Allow SystemExit bubbles to transparently terminate without catching below
+                raise
             except Exception as e:
                 print(f"An unexpected error occurred sending message: {e}")
                 traceback.print_exc()
@@ -470,26 +494,6 @@ class FluxerClient:
             print(f"Fluxer: Error removing reaction {emoji_id_or_name}: {e}")
             return False
 
-    async def pin_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
-        """
-        Pins a message in a Fluxer channel.
-        Note: Fluxer.py does not currently have a direct API for pinning messages.
-        This method is a placeholder.
-        """
-        print(f"Fluxer: (Placeholder) Attempting to pin message {message_id} in channel {channel_id}...")
-        print("Fluxer: Pin message functionality is not directly supported by the current Fluxer.py library wrapper.")
-        return False
-
-    async def unpin_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
-        """
-        Unpins a message in a Fluxer channel.
-        Note: Fluxer.py does not currently have a direct API for unpinning messages.
-        This method is a placeholder.
-        """
-        print(f"Fluxer: (Placeholder) Attempting to unpin message {message_id} in channel {channel_id}...")
-        print("Fluxer: Unpin message functionality is not directly supported by the current Fluxer.py library wrapper.")
-        return False
-
     async def delete_message(self, channel_id: str, message_id: str, max_retries: int = 3) -> bool:
         """
         Deletes a message in a Fluxer channel.
@@ -550,7 +554,6 @@ class FluxerClient:
         """
         print(f"Fluxer: Fetching pinned messages for channel {channel_id}...")
         try:
-            # Revolt API endpoint for pinned messages: GET /channels/{channel_id}/pins
             pinned_data = await self.fluxer_bot._http.request(
                 "GET",
                 f"/channels/{channel_id}/pins"
@@ -574,8 +577,6 @@ class FluxerClient:
         """
         print(f"Fluxer: Pinning message {message_id} in channel {channel_id}...")
         try:
-            # Revolt API endpoint to pin a message: POST /channels/{channel_id}/pins/{message_id}
-            # Alternatively, if fluxer.py has an internal mapping for raw requests:
             await self.fluxer_bot._http.request(
                 "POST",
                 f"/channels/{channel_id}/pins/{message_id}"
@@ -591,7 +592,6 @@ class FluxerClient:
         """
         print(f"Fluxer: Unpinning message {message_id} from channel {channel_id}...")
         try:
-            # Revolt API endpoint to unpin a message: DELETE /channels/{channel_id}/pins/{message_id}
             await self.fluxer_bot._http.request(
                 "DELETE",
                 f"/channels/{channel_id}/pins/{message_id}"

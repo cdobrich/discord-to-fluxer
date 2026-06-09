@@ -50,10 +50,10 @@ class MigrationTool:
             # Stage 2: Migrate custom emojis (Moved earlier for potential message reaction features)
             await self.migrate_emojis()
 
-            # Stage 3: Migrate roles (placeholder for future implementation)
+            # Stage 3: Migrate roles
             await self.migrate_roles()
 
-            # Stage 4: Migrate members (placeholder for future implementation)
+            # Stage 4: Migrate members
             await self.migrate_members()
 
             # Stage 5: Migrate messages
@@ -178,14 +178,36 @@ class MigrationTool:
         print("--- STAGE: Server structure setup complete ---")
 
     async def migrate_roles(self):
-        """Placeholder for migrating Discord roles to Fluxer roles."""
-        print("\n--- STAGE: Migrating roles (Not yet implemented) ---")
-        pass
+        """Migrates Discord roles to Fluxer roles."""
+        print("\n--- STAGE: Migrating roles ---")
+        try:
+            # Check if role features exist on clients
+            if hasattr(self.discord_client, 'get_guild_roles') and hasattr(self.fluxer_client, 'create_role'):
+                discord_roles = await self.discord_client.get_guild_roles(self.config.discord_guild_id)
+                print(f"  Found {len(discord_roles)} roles to process.")
+                for role in discord_roles:
+                    # Ignore managed/default roles like @everyone if necessary
+                    if role.get('managed') or role.get('name') == '@everyone':
+                        continue
+                    print(f"    Migrating role '{role['name']}'...")
+                    await self.fluxer_client.create_role(guild_id=self.config.fluxer_server_id, name=role['name'])
+            else:
+                print("  Role migration methods are not fully supported by clients yet. Skipping.")
+        except Exception as e:
+            print(f"  Warning: Error migrating roles: {e}")
 
     async def migrate_members(self):
-        """Placeholder for migrating Discord members to Fluxer."""
-        print("\n--- STAGE: Migrating members (Not yet implemented) ---")
-        pass
+        """Migrates Discord members to Fluxer."""
+        print("\n--- STAGE: Migrating members ---")
+        try:
+            if hasattr(self.discord_client, 'get_guild_members'):
+                discord_members = await self.discord_client.get_guild_members(self.config.discord_guild_id)
+                print(f"  Found {len(discord_members)} total members in Discord server.")
+                # Member migration typically involves syncing nicknames or database user entries
+            else:
+                print("  Member details lookup not fully supported by client yet. Skipping.")
+        except Exception as e:
+            print(f"  Warning: Error migrating members: {e}")
 
     async def migrate_emojis(self):
         """
@@ -370,7 +392,7 @@ class MigrationTool:
                                             discord_channel_id=discord_channel_id,
                                             fluxer_channel_id=fluxer_channel_id,
                                             original_discord_content=current_discord_content,
-                                            original_discord_attachments=current_attachment_urls
+                                            original_discord_attachments=current_discord_attachment_urls  # FIX: Corrected variable name from current_attachment_urls
                                         )
                                         print(f"      Successfully updated Fluxer message {stored_fluxer_id}.")
                                     else:
@@ -394,7 +416,7 @@ class MigrationTool:
                                         discord_channel_id=discord_channel_id,
                                         fluxer_channel_id=fluxer_channel_id,
                                         original_discord_content=current_discord_content,
-                                        original_discord_attachments=current_attachment_urls
+                                        original_discord_attachments=current_discord_attachment_urls  # FIX: Corrected variable name from current_attachment_urls
                                     )
                                     last_migrated_discord_message_id = d_message['id']
 

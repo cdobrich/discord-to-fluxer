@@ -117,3 +117,13 @@ async def test_delete_message_http_exception(mock_fluxer_api):
 
     result = await client.delete_message("c1", "m1")
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_fluxer_client_accepts_user_mappings():
+    """Verify that the Fluxer client captures and assigns specialized user mappings correctly."""
+    fake_mappings = {"test_user": {"fluxer_username": "Test", "fluxer_auth_key": "key"}}
+    client = FluxerClient("fake_token", "fake_guild_id", user_mappings=fake_mappings)
+
+    assert client.user_mappings == fake_mappings
+    assert client.user_mappings["test_user"]["fluxer_username"] == "Test"

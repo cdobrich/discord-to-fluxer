@@ -15,21 +15,27 @@ from discord_client import DiscordClient
 from config import STATE_DB_FILE, AppConfig
 from fluxer_client import FluxerClient
 from state_manager import StateManager
+from migration_context import MigrationContext
 
 
 class MigrationTool:
     """
     Orchestrates the migration of Discord server data to Fluxer.
     """
-
     def __init__(self, config: AppConfig):
         self.config = config
         self.discord_client = DiscordClient(config.discord_token)
         self.fluxer_client = FluxerClient(config.fluxer_token, config.fluxer_server_id, config.user_mappings)
         self.db = StateManager(STATE_DB_FILE)
-        self.fluxer_emoji_map = {}
 
-        # Set environment variable for Discord client's guild ready wait if needed
+        # Initialize the context
+        self.context = MigrationContext(
+            self.config,
+            self.discord_client,
+            self.fluxer_client,
+            self.db
+        )
+        self.fluxer_emoji_map = {}
         os.environ['DISCORD_GUILD_ID_FOR_BOT_WAIT'] = self.config.discord_guild_id
 
     async def run_full_migration(self):
@@ -501,7 +507,7 @@ class MigrationTool:
                 print(f"    Fetched batch of {len(discord_messages)} messages from Discord history instance.")
 
                 # Build a dynamic pool of all emojis present in this batch to identify possible obsolete items
-                batch_emoji_pool = set(['🔥', '💯', '💪', '⭐', '🐈'])
+                batch_emoji_pool = set([])  # FIXME
                 for msg in discord_messages:
                     for r in getattr(msg, "reactions", []):
                         r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
@@ -548,7 +554,7 @@ class MigrationTool:
                             discord_reaction_keys = set()
                             for r in getattr(discord_msg, "reactions", []):
                                 r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
-                                discord_reaction_keys.add(r_key)
+                                discord_reaction_keys.add(r_key)  # FIXME
 
                             # 1. Dynamic Additions: Apply any active reactions from Discord
                             for r_key in discord_reaction_keys:
@@ -628,9 +634,9 @@ class MigrationTool:
 
                     # Generate fallback wrappers for empty context structures
                     if not processed_content and attachments_payload:
-                        clean_content = f"**[{author_name}]** sent an attachment."
+                        clean_content = f" "
                     else:
-                        clean_content = f"**[{author_name}]** {processed_content}"
+                        clean_content = f"{processed_content}"
 
                     # Forward prepared payload frame directly to target wrapper
                     print(f"      Forwarding content vector payload to Fluxer instance...")
@@ -757,3 +763,48 @@ class MigrationTool:
                     print(f"        Warning: Pin mapping assignment failed: {pin_init_err}")
                     stats["errors"] += 1
         return cursor
+
+    async def process_and_send_message(self, discord_msg, fluxer_channel_id):
+        """
+        Processes a Discord message, checks for reply-links, and sends it to Fluxer.
+        """
+        # Prepare the base payload
+        payload = {
+            "content": discord_msg.content or "",
+            # Attachments logic would go here if not already handled
+        }
+
+        # 1. Reply-Link Preservation Logic
+        if discord_msg.reference and discord_msg.reference.message_id:
+            discord_reply_id = str(discord_msg.reference.message_id)
+
+            # Lookup the Fluxer ID using the context cache/DB
+            fluxer_reply_id = self.context.get_fluxer_message_id(discord_reply_id)
+
+            if fluxer_reply_id:
+                # Add the reference to the payload
+                payload["message_reference"] = {"message_id": fluxer_reply_id}
+                print(f"  [Reply] Linked to Fluxer message: {fluxer_reply_id}")
+            else:
+                print(f"  [Reply] Referenced message {discord_reply_id} not migrated yet, skipping link.")
+
+        # 2. Send the message via the context client
+        try:
+            # Assuming your FluxerClient has a send_message method
+            # Adjust the method name based on your actual library wrapper
+            new_fluxer_msg = await self.context.fluxer.send_message(
+                channel_id=fluxer_channel_id,
+                **payload
+            )
+
+            # 3. Store the new mapping so future replies can find this message
+            if new_fluxer_msg and hasattr(new_fluxer_msg, 'id'):
+                self.context.set_message_mapping(
+                    discord_id=str(discord_msg.id),
+                    fluxer_id=str(new_fluxer_msg.id)
+                )
+                return new_fluxer_msg
+
+        except Exception as e:
+            print(f"  [Error] Failed to send message {discord_msg.id}: {e}")
+            return None

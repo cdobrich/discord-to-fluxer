@@ -404,6 +404,13 @@ class MigrationTool:
 
                     print(f"    Fetched batch of {len(discord_messages)} messages from Discord history instance.")
 
+                    # Build a dynamic pool of all emojis present in this batch to identify possible obsolete items
+                    batch_emoji_pool = set(['🔥', '💯', '💪', '⭐', '🐈'])
+                    for msg in discord_messages:
+                        for r in getattr(msg, "reactions", []):
+                            r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
+                            batch_emoji_pool.add(r_key)
+
                     for idx, discord_msg in enumerate(discord_messages, start=1):
                         if not getattr(self, "_is_running", True):
                             break
@@ -427,7 +434,6 @@ class MigrationTool:
                             if row:
                                 fluxer_msg_id = row['fluxer_id']
                         except Exception:
-                            # Secondary structural schema variant check
                             try:
                                 cursor.execute(
                                     "SELECT destination_id FROM message_links WHERE source_id = ?",
@@ -440,15 +446,41 @@ class MigrationTool:
                                 pass
 
                         if fluxer_msg_id:
-                            # === UPDATE EXPORT: Sync Reaction Changes for Pre-existing Posts ===
+                            # === FIXED UPDATE EXPORT: Unconditional Delta Reconcile Strategy ===
                             try:
+                                # Get all current reactions on the Discord message
+                                discord_reaction_keys = set()
                                 for r in getattr(discord_msg, "reactions", []):
                                     r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
+                                    discord_reaction_keys.add(r_key)
+
+                                # 1. Dynamic Additions: Apply any active reactions from Discord
+                                for r_key in discord_reaction_keys:
                                     await self.fluxer_client.apply_reaction(fluxer_channel_id, fluxer_msg_id, r_key)
                                     stats["reactions_migrated"] += 1
                                     await asyncio.sleep(0.05)
+
+                                # 2. Unconditional Removals: If an emoji exists in our batch pool but is NOT on
+                                # this specific message anymore, proactively call the API deletion method.
+                                for potential_obsolete_key in batch_emoji_pool:
+                                    if potential_obsolete_key not in discord_reaction_keys:
+                                        try:
+                                            if hasattr(self.fluxer_client, "remove_reaction"):
+                                                await self.fluxer_client.remove_reaction(fluxer_channel_id,
+                                                                                         fluxer_msg_id,
+                                                                                         potential_obsolete_key)
+                                                await asyncio.sleep(0.02)
+                                            elif hasattr(self.fluxer_client, "delete_reaction"):
+                                                await self.fluxer_client.delete_reaction(fluxer_channel_id,
+                                                                                         fluxer_msg_id,
+                                                                                         potential_obsolete_key)
+                                                await asyncio.sleep(0.02)
+                                        except Exception:
+                                            # Gracefully skip if the reaction wasn't on Fluxer to begin with
+                                            pass
+
                             except Exception as rx_err:
-                                print(f"      Warning: Failed to reconcile updated reaction states: {rx_err}")
+                                print(f"      Warning: Failed to fully reconcile updated reaction states: {rx_err}")
                                 stats["errors"] += 1
 
                             # Sync checkpoint positions forward using direct SQLite cursor

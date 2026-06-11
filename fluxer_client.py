@@ -1,9 +1,10 @@
 import asyncio
 import traceback
 from typing import Any
+import urllib.parse
 
 from fluxer.client import Client as FluxerClientBase
-from fluxer.http import HTTPClient
+from fluxer.http import HTTPClient, Route
 from fluxer.enums import ChannelType
 from fluxer.errors import HTTPException
 from fluxer.models import Channel, Guild, Message, Emoji
@@ -22,13 +23,84 @@ class FluxerClient:
         self.token = token
         self.fluxer_guild_id = fluxer_guild_id
         self.user_mappings = user_mappings or {}
-        # Sanitize token for printing to avoid exposing full token in logs.
         sanitized_token = '*' * (len(token) - 4) + token[-4:] if token else 'None'
         print(f"FluxerClient initialized with token (last 4 chars): {sanitized_token}")
-        self.fluxer_bot = FluxerClientBase() # Using the base Client for direct API calls
+        self.fluxer_bot = FluxerClientBase()
 
         self.fluxer_guild: Guild | None = None
-        self._masquerade_https = {} # Cache for masquerade HTTP clients
+        self._masquerade_https = {}
+
+    async def apply_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str) -> bool:
+        """
+        Applies a reaction to a Fluxer message using the native library Route engine.
+        """
+        print(
+            f"Fluxer: Attempting to apply reaction '{emoji_id_or_name}' to message {message_id} in channel {channel_id}...")
+        try:
+            http_engine = self.fluxer_bot._http
+            encoded_emoji = urllib.parse.quote(emoji_id_or_name)
+
+            # Route object now correctly instantiates internal rate-limiting buckets natively
+            route = Route(
+                "PUT",
+                "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me",
+                channel_id=channel_id,
+                message_id=message_id,
+                emoji=encoded_emoji
+            )
+            await http_engine.request(route)
+            return True
+        except Exception as e:
+            print(f"An unexpected error occurred applying reaction: {e}")
+            return False
+
+    async def remove_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str,
+                              user_id: str = "@me") -> bool:
+        """
+        Removes a reaction from a Fluxer message.
+        """
+        print(
+            f"Fluxer: Attempting to remove reaction '{emoji_id_or_name}' from message {message_id} in channel {channel_id}...")
+        try:
+            http_engine = self.fluxer_bot._http
+            encoded_emoji = urllib.parse.quote(emoji_id_or_name)
+
+            route = Route(
+                "DELETE",
+                "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/{user_id}",
+                channel_id=channel_id,
+                message_id=message_id,
+                emoji=encoded_emoji,
+                user_id=user_id
+            )
+            await http_engine.request(route)
+            return True
+        except Exception as e:
+            print(f"An unexpected error occurred removing reaction: {e}")
+            return False
+
+    # Fix 2: Name matched exactly to what migration_tool expects, returning string IDs
+    async def get_channel_pinned_messages(self, channel_id: str) -> list[str]:
+        """
+        Fetches pinned message IDs from Fluxer to match migration_tool expectations.
+        """
+        try:
+            http_engine = self.fluxer_bot._http
+
+            route = Route(
+                "GET",
+                "/channels/{channel_id}/pins",
+                channel_id=channel_id
+            )
+            res = await http_engine.request(route)
+
+            if isinstance(res, list):
+                # Safely collect the item text IDs out of the pin mapping dictionaries
+                return [str(msg.get("id")) for msg in res if msg.get("id")]
+            return []
+        except Exception as e:
+            print(f"An unexpected error occurred fetching pinned messages: {e}")
+            return []
 
     async def _get_masquerade_http(self, username: str) -> HTTPClient | None:
         """
@@ -464,66 +536,6 @@ class FluxerClient:
             traceback.print_exc()
             return None
 
-    async def apply_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str) -> bool:
-        """Applies a reaction to a Fluxer message."""
-        print(
-            f"Fluxer: Attempting to apply reaction '{emoji_id_or_name}' to message {message_id} in channel {channel_id}...")
-        if not self.fluxer_bot._http:
-            print("Error: Fluxer HTTP client not initialized. Cannot apply reaction.")
-            return False
-        try:
-            await asyncio.wait_for(
-                self.fluxer_bot._http.add_reaction(
-                    channel_id=channel_id,
-                    message_id=message_id,
-                    emoji=emoji_id_or_name
-                ),
-                timeout=API_TIMEOUT
-            )
-            print(f"Fluxer: Successfully applied reaction '{emoji_id_or_name}' to message {message_id}.")
-            return True
-        except asyncio.TimeoutError:
-            print(f"Fluxer: Timeout applying reaction '{emoji_id_or_name}' to message {message_id}.")
-            return False
-        except HTTPException as e:
-            print(f"Fluxer: Error applying reaction '{emoji_id_or_name}' (HTTP {e.status}): {e.message}")
-            return False
-        except Exception as e:
-            print(f"An unexpected error occurred applying reaction: {e}")
-            traceback.print_exc()
-            return False
-
-    async def remove_reaction(self, channel_id: str, message_id: str, emoji_id_or_name: str,
-                              user_id: str = "@me") -> bool:
-        """Removes a reaction from a Fluxer message."""
-        print(
-            f"Fluxer: Attempting to remove reaction '{emoji_id_or_name}' from message {message_id} in channel {channel_id}...")
-        if not self.fluxer_bot._http:
-            print("Error: Fluxer HTTP client not initialized. Cannot remove reaction.")
-            return False
-        try:
-            await asyncio.wait_for(
-                self.fluxer_bot._http.delete_reaction(
-                    channel_id=channel_id,
-                    message_id=message_id,
-                    emoji=emoji_id_or_name,
-                    user_id=user_id
-                ),
-                timeout=API_TIMEOUT
-            )
-            print(f"Fluxer: Successfully removed reaction '{emoji_id_or_name}' from message {message_id}.")
-            return True
-        except asyncio.TimeoutError:
-            print(f"Fluxer: Timeout removing reaction '{emoji_id_or_name}' from message {message_id}.")
-            return False
-        except HTTPException as e:
-            print(f"Fluxer: Error removing reaction '{emoji_id_or_name}' (HTTP {e.status}): {e.message}")
-            return False
-        except Exception as e:
-            print(f"An unexpected error occurred removing reaction: {e}")
-            traceback.print_exc()
-            return False
-
     async def get_message_reactions(self, channel_id: str, message_id: str) -> list:
         """
         Fetches the reactions currently present on a specific Fluxer message.
@@ -594,29 +606,6 @@ class FluxerClient:
 
         print(f"Fluxer: Failed to delete message {message_id} after {max_retries} attempts.")
         return False
-
-    async def get_channel_pinned_messages(self, channel_id: str) -> list[dict]:
-        """Fetches raw pinned messages list using the library's internal client wrapper."""
-        if not self.fluxer_bot or not self.fluxer_bot._http:
-            print("Error: Fluxer bot client or HTTP client not initialized. Cannot fetch pinned messages.")
-            return []
-        try:
-            pinned_messages = await asyncio.wait_for(
-                self.fluxer_bot._http.get_pinned_messages(channel_id),
-                timeout=API_TIMEOUT
-            )
-            print(f"Fluxer: Successfully fetched {len(pinned_messages)} pinned messages for channel {channel_id}.")
-            return pinned_messages
-        except asyncio.TimeoutError:
-            print(f"Fluxer: Timeout fetching pinned messages for channel {channel_id}.")
-            return []
-        except HTTPException as e:
-            print(f"Fluxer: Error fetching pinned messages for channel {channel_id}: Status={e.status}, Code={e.code}")
-            return []
-        except Exception as e:
-            print(f"An unexpected error occurred fetching pinned messages: {e}")
-            traceback.print_exc()
-            return []
 
     async def get_pinned_message_ids(self, channel_id: str) -> list[str]:
         """Fetches IDs of pinned messages from a Fluxer channel."""

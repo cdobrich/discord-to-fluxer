@@ -559,7 +559,10 @@ class MigrationTool:
 
             # --- Update Mode Task: Process Reverse Message Deletions ---
             print(f"  Checking for deleted messages in tracking window for channel {discord_channel_id}...")
-            all_mappings = self.db.get_all_message_mappings()
+            cursor = self.db.conn.cursor()
+            cursor.execute('SELECT discord_id, fluxer_id FROM message_mappings')
+            all_mappings = [(row['discord_id'], row['fluxer_id']) for row in cursor.fetchall()]
+
             messages_to_delete_from_fluxer = []
 
             for discord_id_in_db, fluxer_id_in_db in all_mappings:

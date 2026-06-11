@@ -2,9 +2,13 @@ import asyncio
 import os
 import re
 import traceback
+from typing import Any
+
 import yaml
 
 import discord
+from discord import CategoryChannel, ForumChannel, Object, StageChannel, TextChannel, Thread, VoiceChannel
+from discord.abc import PrivateChannel
 from fluxer.enums import ChannelType
 
 from discord_client import DiscordClient
@@ -382,278 +386,9 @@ class MigrationTool:
             current_after_obj = after_object
             processed_threads = set()
 
-            while has_more:
-                if not getattr(self, "_is_running", True):
-                    break
-
-                try:
-                    stats[
-                        "current_action"] = f"Fetching batch after {current_after_obj.id if current_after_obj else 'Beginning'}"
-                    if progress_callback:
-                        await progress_callback(stats)
-
-                    # Fetch history directly via underlying discord.py object instance
-                    discord_messages = []
-                    if discord_channel:
-                        async for msg in discord_channel.history(limit=100, after=current_after_obj, oldest_first=True):
-                            discord_messages.append(msg)
-
-                    if not discord_messages:
-                        has_more = False
-                        break
-
-                    print(f"    Fetched batch of {len(discord_messages)} messages from Discord history instance.")
-
-                    # Build a dynamic pool of all emojis present in this batch to identify possible obsolete items
-                    batch_emoji_pool = set(['🔥', '💯', '💪', '⭐', '🐈'])
-                    for msg in discord_messages:
-                        for r in getattr(msg, "reactions", []):
-                            r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
-                            batch_emoji_pool.add(r_key)
-
-                    for idx, discord_msg in enumerate(discord_messages, start=1):
-                        if not getattr(self, "_is_running", True):
-                            break
-
-                        stats["current_action"] = f"Processing message {idx}/{len(discord_messages)}"
-                        if progress_callback:
-                            await progress_callback(stats)
-
-                        print(
-                            f"    [{idx}/{len(discord_messages)}] Processing Discord message {discord_msg.id} (Author: {discord_msg.author.display_name})...")
-
-                        # Direct SQLite translation lookup fallback
-                        fluxer_msg_id = None
-                        try:
-                            cursor = self.db.conn.cursor()
-                            cursor.execute(
-                                "SELECT fluxer_id FROM message_mappings WHERE discord_id = ?",
-                                (str(discord_msg.id),)
-                            )
-                            row = cursor.fetchone()
-                            if row:
-                                fluxer_msg_id = row['fluxer_id']
-                        except Exception:
-                            try:
-                                cursor.execute(
-                                    "SELECT destination_id FROM message_links WHERE source_id = ?",
-                                    (str(discord_msg.id),)
-                                )
-                                row = cursor.fetchone()
-                                if row:
-                                    fluxer_msg_id = row['destination_id']
-                            except Exception:
-                                pass
-
-                        if fluxer_msg_id:
-                            # === FIXED UPDATE EXPORT: Unconditional Delta Reconcile Strategy ===
-                            try:
-                                # Get all current reactions on the Discord message
-                                discord_reaction_keys = set()
-                                for r in getattr(discord_msg, "reactions", []):
-                                    r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
-                                    discord_reaction_keys.add(r_key)
-
-                                # 1. Dynamic Additions: Apply any active reactions from Discord
-                                for r_key in discord_reaction_keys:
-                                    await self.fluxer_client.apply_reaction(fluxer_channel_id, fluxer_msg_id, r_key)
-                                    stats["reactions_migrated"] += 1
-                                    await asyncio.sleep(0.05)
-
-                                # 2. Unconditional Removals: If an emoji exists in our batch pool but is NOT on
-                                # this specific message anymore, proactively call the API deletion method.
-                                for potential_obsolete_key in batch_emoji_pool:
-                                    if potential_obsolete_key not in discord_reaction_keys:
-                                        try:
-                                            if hasattr(self.fluxer_client, "remove_reaction"):
-                                                await self.fluxer_client.remove_reaction(fluxer_channel_id,
-                                                                                         fluxer_msg_id,
-                                                                                         potential_obsolete_key)
-                                                await asyncio.sleep(0.02)
-                                            elif hasattr(self.fluxer_client, "delete_reaction"):
-                                                await self.fluxer_client.delete_reaction(fluxer_channel_id,
-                                                                                         fluxer_msg_id,
-                                                                                         potential_obsolete_key)
-                                                await asyncio.sleep(0.02)
-                                        except Exception:
-                                            # Gracefully skip if the reaction wasn't on Fluxer to begin with
-                                            pass
-
-                            except Exception as rx_err:
-                                print(f"      Warning: Failed to fully reconcile updated reaction states: {rx_err}")
-                                stats["errors"] += 1
-
-                            # Sync checkpoint positions forward using direct SQLite cursor
-                            current_after_obj = discord.Object(id=discord_msg.id)
-                            try:
-                                cursor = self.db.conn.cursor()
-                                cursor.execute(
-                                    "INSERT OR REPLACE INTO channel_checkpoints (discord_channel_id, checkpoint_id) VALUES (?, ?)",
-                                    (str(discord_channel_id), str(discord_msg.id))
-                                )
-                                self.db.conn.commit()
-                            except Exception:
-                                try:
-                                    cursor.execute(
-                                        "INSERT OR REPLACE INTO channel_progress (channel_id, last_message_id) VALUES (?, ?)",
-                                        (str(discord_channel_id), str(discord_msg.id))
-                                    )
-                                    self.db.conn.commit()
-                                except Exception:
-                                    pass
-
-                            if not stats["first_message_url"]:
-                                stats["first_message_url"] = discord_msg.jump_url
-                            stats["last_message_url"] = discord_msg.jump_url
-                            continue
-
-                        # Handle structural message components: Download attachments/media binaries
-                        attachments_payload = []
-                        for attachment in discord_msg.attachments:
-                            try:
-                                print(f"      Downloading message attachment asset: {attachment.filename}...")
-                                file_bytes = await self.discord_client.download_attachment(attachment.url)
-                                if file_bytes:
-                                    attachments_payload.append({"filename": attachment.filename, "data": file_bytes})
-                                    stats["attachments_migrated"] += 1
-                                    print(
-                                        f"      Successfully buffered {attachment.filename} ({len(file_bytes)} bytes).")
-                            except Exception as att_err:
-                                print(f"      Warning: Skipped file download target {attachment.filename}: {att_err}")
-                                stats["errors"] += 1
-
-                        # Resolve text formatting nodes
-                        author_name = discord_msg.author.display_name
-
-                        # Intercept and process raw Markdown entities via utility parser
-                        processed_content = discord_msg.content or ""
-                        if processed_content and hasattr(self, "resolve_custom_markdown_links"):
-                            processed_content = self.resolve_custom_markdown_links(processed_content, discord_msg.guild)
-
-                        # Generate fallback wrappers for empty context structures
-                        if not processed_content and attachments_payload:
-                            clean_content = f"**[{author_name}]** sent an attachment."
-                        else:
-                            clean_content = f"**[{author_name}]** {processed_content}"
-
-                        # Forward prepared payload frame directly to target wrapper
-                        print(f"      Forwarding content vector payload to Fluxer instance...")
-                        new_fluxer_msg = None
-                        try:
-                            new_fluxer_msg = await self.fluxer_client.send_message(
-                                channel_id=fluxer_channel_id,
-                                content=clean_content,
-                                attachments=attachments_payload,
-                                author_name=author_name
-                            )
-                        except Exception as send_err:
-                            print(f"      Error: API rejected target message translation frame: {send_err}")
-                            stats["errors"] += 1
-
-                        # Extract ID from returned message response object if available
-                        new_fluxer_id = None
-                        if new_fluxer_msg and isinstance(new_fluxer_msg, dict):
-                            new_fluxer_id = str(new_fluxer_msg.get("id"))
-
-                        if new_fluxer_id:
-                            # Direct SQLite write fallback for message mapping saving
-                            try:
-                                cursor = self.db.conn.cursor()
-                                cursor.execute(
-                                    "INSERT OR REPLACE INTO message_mappings (discord_id, fluxer_id) VALUES (?, ?)",
-                                    (str(discord_msg.id), str(new_fluxer_id))
-                                )
-                                self.db.conn.commit()
-                            except Exception:
-                                try:
-                                    cursor.execute(
-                                        "INSERT OR REPLACE INTO message_links (source_id, destination_id) VALUES (?, ?)",
-                                        (str(discord_msg.id), str(new_fluxer_id))
-                                    )
-                                    self.db.conn.commit()
-                                except Exception:
-                                    pass
-
-                            stats["messages_migrated"] += 1
-
-                            if not stats["first_message_url"]:
-                                stats["first_message_url"] = discord_msg.jump_url
-                            stats["last_message_url"] = discord_msg.jump_url
-
-                            # Apply initial reaction states to newly created message instance
-                            for r in getattr(discord_msg, "reactions", []):
-                                try:
-                                    r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
-                                    await self.fluxer_client.apply_reaction(fluxer_channel_id, new_fluxer_id, r_key)
-                                    stats["reactions_migrated"] += 1
-                                    await asyncio.sleep(0.05)
-                                except Exception as rx_init_err:
-                                    print(f"        Warning: Could not bind initial reaction target: {rx_init_err}")
-                                    stats["errors"] += 1
-
-                            # Verify and inject message pin balance configurations
-                            if str(discord_msg.id) in discord_pinned_ids:
-                                try:
-                                    await self.fluxer_client.pin_message(fluxer_channel_id, new_fluxer_id)
-                                    stats["pins_migrated"] += 1
-                                    print("      Message pin state successfully locked on Fluxer endpoint.")
-                                except Exception as pin_init_err:
-                                    print(f"        Warning: Pin mapping assignment failed: {pin_init_err}")
-                                    stats["errors"] += 1
-
-                        # --- Thread Tree Discovery Logic ---
-                        if hasattr(discord_msg,
-                                   "thread") and discord_msg.thread and discord_msg.thread.id not in processed_threads:
-                            thread_node = discord_msg.thread
-                            processed_threads.add(thread_node.id)
-                            print(
-                                f"      [Thread Discovered] Step into nested thread matrix context: '{thread_node.name}' ({thread_node.id})...")
-                            try:
-                                stats["current_action"] = f"Processing nested thread: {thread_node.name}"
-                                if progress_callback:
-                                    await progress_callback(stats)
-
-                                # Process deep nested thread child arrays recursively
-                                thread_messages = await self.discord_client.fetch_thread_history(thread_node.id)
-                                print(
-                                    f"        Fetched {len(thread_messages)} child items inside nested thread node history.")
-
-                                for t_msg in thread_messages:
-                                    pass
-                                stats["threads_processed"] += 1
-                            except Exception as th_err:
-                                print(
-                                    f"      Warning: Nested step processing error on thread context {thread_node.id}: {th_err}")
-                                stats["errors"] += 1
-
-                        # Save checkpoints incrementally using direct SQLite cursor
-                        current_after_obj = discord.Object(id=discord_msg.id)
-                        try:
-                            cursor = self.db.conn.cursor()
-                            cursor.execute(
-                                "INSERT OR REPLACE INTO channel_checkpoints (discord_channel_id, checkpoint_id) VALUES (?, ?)",
-                                (str(discord_channel_id), str(discord_msg.id))
-                            )
-                            self.db.conn.commit()
-                        except Exception:
-                            try:
-                                cursor.execute(
-                                    "INSERT OR REPLACE INTO channel_progress (channel_id, last_message_id) VALUES (?, ?)",
-                                    (str(discord_channel_id), str(discord_msg.id))
-                                )
-                                self.db.conn.commit()
-                            except Exception:
-                                pass
-                        await asyncio.sleep(self.config.delay_between_messages_seconds)
-
-                    if len(discord_messages) < 100:
-                        has_more = False
-
-                except Exception as batch_err:
-                    print(f"    Critical error processing batch timeline slice: {batch_err}")
-                    stats["errors"] += 1
-                    has_more = False
-                    break
+            cursor = await self.migrate_messages_has_more(current_after_obj, cursor, discord_channel,
+                                                          discord_channel_id, discord_pinned_ids, fluxer_channel_id,
+                                                          has_more, processed_threads, progress_callback, stats)
 
             # --- Sync Channel Pin Balance States ---
             print(f"  Reconciling pinned messages for Fluxer channel {fluxer_channel_id}...")
@@ -736,3 +471,289 @@ class MigrationTool:
         stats["current_action"] = "Completed"
         if progress_callback:
             await progress_callback(stats)
+
+    async def migrate_messages_has_more(self, current_after_obj: Object | None, cursor,
+                                        discord_channel: VoiceChannel | StageChannel | ForumChannel | TextChannel | CategoryChannel | Thread | PrivateChannel | None,
+                                        discord_channel_id, discord_pinned_ids: list[Any] | list[str],
+                                        fluxer_channel_id, has_more: bool, processed_threads: set[Any],
+                                        progress_callback: Any | None,
+                                        stats: dict[str | Any, int | None | str | Any]) -> Any:
+        while has_more:
+            if not getattr(self, "_is_running", True):
+                break
+
+            try:
+                stats[
+                    "current_action"] = f"Fetching batch after {current_after_obj.id if current_after_obj else 'Beginning'}"
+                if progress_callback:
+                    await progress_callback(stats)
+
+                # Fetch history directly via underlying discord.py object instance
+                discord_messages = []
+                if discord_channel:
+                    async for msg in discord_channel.history(limit=100, after=current_after_obj, oldest_first=True):
+                        discord_messages.append(msg)
+
+                if not discord_messages:
+                    has_more = False
+                    break
+
+                print(f"    Fetched batch of {len(discord_messages)} messages from Discord history instance.")
+
+                # Build a dynamic pool of all emojis present in this batch to identify possible obsolete items
+                batch_emoji_pool = set(['🔥', '💯', '💪', '⭐', '🐈'])
+                for msg in discord_messages:
+                    for r in getattr(msg, "reactions", []):
+                        r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
+                        batch_emoji_pool.add(r_key)
+
+                for idx, discord_msg in enumerate(discord_messages, start=1):
+                    if not getattr(self, "_is_running", True):
+                        break
+
+                    stats["current_action"] = f"Processing message {idx}/{len(discord_messages)}"
+                    if progress_callback:
+                        await progress_callback(stats)
+
+                    print(
+                        f"    [{idx}/{len(discord_messages)}] Processing Discord message {discord_msg.id} (Author: {discord_msg.author.display_name})...")
+
+                    # Direct SQLite translation lookup fallback
+                    fluxer_msg_id = None
+                    try:
+                        cursor = self.db.conn.cursor()
+                        cursor.execute(
+                            "SELECT fluxer_id FROM message_mappings WHERE discord_id = ?",
+                            (str(discord_msg.id),)
+                        )
+                        row = cursor.fetchone()
+                        if row:
+                            fluxer_msg_id = row['fluxer_id']
+                    except Exception:
+                        try:
+                            cursor.execute(
+                                "SELECT destination_id FROM message_links WHERE source_id = ?",
+                                (str(discord_msg.id),)
+                            )
+                            row = cursor.fetchone()
+                            if row:
+                                fluxer_msg_id = row['destination_id']
+                        except Exception:
+                            pass
+
+                    if fluxer_msg_id:
+                        # === FIXED UPDATE EXPORT: Unconditional Delta Reconcile Strategy ===
+                        try:
+                            # Get all current reactions on the Discord message
+                            discord_reaction_keys = set()
+                            for r in getattr(discord_msg, "reactions", []):
+                                r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
+                                discord_reaction_keys.add(r_key)
+
+                            # 1. Dynamic Additions: Apply any active reactions from Discord
+                            for r_key in discord_reaction_keys:
+                                await self.fluxer_client.apply_reaction(fluxer_channel_id, fluxer_msg_id, r_key)
+                                stats["reactions_migrated"] += 1
+                                await asyncio.sleep(0.05)
+
+                            # 2. Unconditional Removals: If an emoji exists in our batch pool but is NOT on
+                            # this specific message anymore, proactively call the API deletion method.
+                            for potential_obsolete_key in batch_emoji_pool:
+                                if potential_obsolete_key not in discord_reaction_keys:
+                                    try:
+                                        if hasattr(self.fluxer_client, "remove_reaction"):
+                                            await self.fluxer_client.remove_reaction(fluxer_channel_id,
+                                                                                     fluxer_msg_id,
+                                                                                     potential_obsolete_key)
+                                            await asyncio.sleep(0.02)
+                                        elif hasattr(self.fluxer_client, "delete_reaction"):
+                                            await self.fluxer_client.delete_reaction(fluxer_channel_id,
+                                                                                     fluxer_msg_id,
+                                                                                     potential_obsolete_key)
+                                            await asyncio.sleep(0.02)
+                                    except Exception:
+                                        # Gracefully skip if the reaction wasn't on Fluxer to begin with
+                                        pass
+
+                        except Exception as rx_err:
+                            print(f"      Warning: Failed to fully reconcile updated reaction states: {rx_err}")
+                            stats["errors"] += 1
+
+                        # Sync checkpoint positions forward using direct SQLite cursor
+                        current_after_obj = discord.Object(id=discord_msg.id)
+                        try:
+                            cursor = self.db.conn.cursor()
+                            cursor.execute(
+                                "INSERT OR REPLACE INTO channel_checkpoints (discord_channel_id, checkpoint_id) VALUES (?, ?)",
+                                (str(discord_channel_id), str(discord_msg.id))
+                            )
+                            self.db.conn.commit()
+                        except Exception:
+                            try:
+                                cursor.execute(
+                                    "INSERT OR REPLACE INTO channel_progress (channel_id, last_message_id) VALUES (?, ?)",
+                                    (str(discord_channel_id), str(discord_msg.id))
+                                )
+                                self.db.conn.commit()
+                            except Exception:
+                                pass
+
+                        if not stats["first_message_url"]:
+                            stats["first_message_url"] = discord_msg.jump_url
+                        stats["last_message_url"] = discord_msg.jump_url
+                        continue
+
+                    # Handle structural message components: Download attachments/media binaries
+                    attachments_payload = []
+                    for attachment in discord_msg.attachments:
+                        try:
+                            print(f"      Downloading message attachment asset: {attachment.filename}...")
+                            file_bytes = await self.discord_client.download_attachment(attachment.url)
+                            if file_bytes:
+                                attachments_payload.append({"filename": attachment.filename, "data": file_bytes})
+                                stats["attachments_migrated"] += 1
+                                print(
+                                    f"      Successfully buffered {attachment.filename} ({len(file_bytes)} bytes).")
+                        except Exception as att_err:
+                            print(f"      Warning: Skipped file download target {attachment.filename}: {att_err}")
+                            stats["errors"] += 1
+
+                    # Resolve text formatting nodes
+                    author_name = discord_msg.author.display_name
+
+                    # Intercept and process raw Markdown entities via utility parser
+                    processed_content = discord_msg.content or ""
+                    if processed_content and hasattr(self, "resolve_custom_markdown_links"):
+                        processed_content = self.resolve_custom_markdown_links(processed_content, discord_msg.guild)
+
+                    # Generate fallback wrappers for empty context structures
+                    if not processed_content and attachments_payload:
+                        clean_content = f"**[{author_name}]** sent an attachment."
+                    else:
+                        clean_content = f"**[{author_name}]** {processed_content}"
+
+                    # Forward prepared payload frame directly to target wrapper
+                    print(f"      Forwarding content vector payload to Fluxer instance...")
+                    new_fluxer_msg = None
+                    try:
+                        new_fluxer_msg = await self.fluxer_client.send_message(
+                            channel_id=fluxer_channel_id,
+                            content=clean_content,
+                            attachments=attachments_payload,
+                            author_name=author_name
+                        )
+                    except Exception as send_err:
+                        print(f"      Error: API rejected target message translation frame: {send_err}")
+                        stats["errors"] += 1
+
+                    # Extract ID from returned message response object if available
+                    new_fluxer_id = None
+                    if new_fluxer_msg and isinstance(new_fluxer_msg, dict):
+                        new_fluxer_id = str(new_fluxer_msg.get("id"))
+
+                    cursor = await self.if_new_fluxer_id(cursor, discord_msg, discord_pinned_ids, fluxer_channel_id,
+                                                         new_fluxer_id, stats)
+
+                    # --- Thread Tree Discovery Logic ---
+                    if hasattr(discord_msg,
+                               "thread") and discord_msg.thread and discord_msg.thread.id not in processed_threads:
+                        thread_node = discord_msg.thread
+                        processed_threads.add(thread_node.id)
+                        print(
+                            f"      [Thread Discovered] Step into nested thread matrix context: '{thread_node.name}' ({thread_node.id})...")
+                        try:
+                            stats["current_action"] = f"Processing nested thread: {thread_node.name}"
+                            if progress_callback:
+                                await progress_callback(stats)
+
+                            # Process deep nested thread child arrays recursively
+                            thread_messages = await self.discord_client.fetch_thread_history(thread_node.id)
+                            print(
+                                f"        Fetched {len(thread_messages)} child items inside nested thread node history.")
+
+                            for t_msg in thread_messages:
+                                pass
+                            stats["threads_processed"] += 1
+                        except Exception as th_err:
+                            print(
+                                f"      Warning: Nested step processing error on thread context {thread_node.id}: {th_err}")
+                            stats["errors"] += 1
+
+                    # Save checkpoints incrementally using direct SQLite cursor
+                    current_after_obj = discord.Object(id=discord_msg.id)
+                    try:
+                        cursor = self.db.conn.cursor()
+                        cursor.execute(
+                            "INSERT OR REPLACE INTO channel_checkpoints (discord_channel_id, checkpoint_id) VALUES (?, ?)",
+                            (str(discord_channel_id), str(discord_msg.id))
+                        )
+                        self.db.conn.commit()
+                    except Exception:
+                        try:
+                            cursor.execute(
+                                "INSERT OR REPLACE INTO channel_progress (channel_id, last_message_id) VALUES (?, ?)",
+                                (str(discord_channel_id), str(discord_msg.id))
+                            )
+                            self.db.conn.commit()
+                        except Exception:
+                            pass
+                    await asyncio.sleep(self.config.delay_between_messages_seconds)
+
+                if len(discord_messages) < 100:
+                    has_more = False
+
+            except Exception as batch_err:
+                print(f"    Critical error processing batch timeline slice: {batch_err}")
+                stats["errors"] += 1
+                has_more = False
+                break
+        return cursor
+
+    async def if_new_fluxer_id(self, cursor, discord_msg, discord_pinned_ids: list[Any] | list[str], fluxer_channel_id,
+                               new_fluxer_id: str | None, stats: dict[str | Any, int | None | str | Any]) -> Any:
+        if new_fluxer_id:
+            # Direct SQLite write fallback for message mapping saving
+            try:
+                cursor = self.db.conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO message_mappings (discord_id, fluxer_id) VALUES (?, ?)",
+                    (str(discord_msg.id), str(new_fluxer_id))
+                )
+                self.db.conn.commit()
+            except Exception:
+                try:
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO message_links (source_id, destination_id) VALUES (?, ?)",
+                        (str(discord_msg.id), str(new_fluxer_id))
+                    )
+                    self.db.conn.commit()
+                except Exception:
+                    pass
+
+            stats["messages_migrated"] += 1
+
+            if not stats["first_message_url"]:
+                stats["first_message_url"] = discord_msg.jump_url
+            stats["last_message_url"] = discord_msg.jump_url
+
+            # Apply initial reaction states to newly created message instance
+            for r in getattr(discord_msg, "reactions", []):
+                try:
+                    r_key = str(r.emoji.id) if getattr(r.emoji, "id", None) else str(r.emoji)
+                    await self.fluxer_client.apply_reaction(fluxer_channel_id, new_fluxer_id, r_key)
+                    stats["reactions_migrated"] += 1
+                    await asyncio.sleep(0.05)
+                except Exception as rx_init_err:
+                    print(f"        Warning: Could not bind initial reaction target: {rx_init_err}")
+                    stats["errors"] += 1
+
+            # Verify and inject message pin balance configurations
+            if str(discord_msg.id) in discord_pinned_ids:
+                try:
+                    await self.fluxer_client.pin_message(fluxer_channel_id, new_fluxer_id)
+                    stats["pins_migrated"] += 1
+                    print("      Message pin state successfully locked on Fluxer endpoint.")
+                except Exception as pin_init_err:
+                    print(f"        Warning: Pin mapping assignment failed: {pin_init_err}")
+                    stats["errors"] += 1
+        return cursor

@@ -392,10 +392,9 @@ class MigrationTool:
                     if progress_callback:
                         await progress_callback(stats)
 
-                    # FIXED: Fetch history directly via underlying discord.py object instance to bypass wrapper layout limits
+                    # Fetch history directly via underlying discord.py object instance
                     discord_messages = []
                     if discord_channel:
-                        # discord.py channel.history yields oldest first when using 'after'
                         async for msg in discord_channel.history(limit=100, after=current_after_obj, oldest_first=True):
                             discord_messages.append(msg)
 
@@ -416,8 +415,29 @@ class MigrationTool:
                         print(
                             f"    [{idx}/{len(discord_messages)}] Processing Discord message {discord_msg.id} (Author: {discord_msg.author.display_name})...")
 
-                        # Validate historical forward trace tracking via DB state table
-                        fluxer_msg_id = self.db.get_fluxer_message_id(discord_msg.id)
+                        # Direct SQLite translation lookup fallback
+                        fluxer_msg_id = None
+                        try:
+                            cursor = self.db.conn.cursor()
+                            cursor.execute(
+                                "SELECT fluxer_id FROM message_mappings WHERE discord_id = ?",
+                                (str(discord_msg.id),)
+                            )
+                            row = cursor.fetchone()
+                            if row:
+                                fluxer_msg_id = row['fluxer_id']
+                        except Exception:
+                            # Secondary structural schema variant check
+                            try:
+                                cursor.execute(
+                                    "SELECT destination_id FROM message_links WHERE source_id = ?",
+                                    (str(discord_msg.id),)
+                                )
+                                row = cursor.fetchone()
+                                if row:
+                                    fluxer_msg_id = row['destination_id']
+                            except Exception:
+                                pass
 
                         if fluxer_msg_id:
                             # === UPDATE EXPORT: Sync Reaction Changes for Pre-existing Posts ===
@@ -431,7 +451,7 @@ class MigrationTool:
                                 print(f"      Warning: Failed to reconcile updated reaction states: {rx_err}")
                                 stats["errors"] += 1
 
-                            # Sync checkpoint positions forward before dropping through via secure direct sql write
+                            # Sync checkpoint positions forward using direct SQLite cursor
                             current_after_obj = discord.Object(id=discord_msg.id)
                             try:
                                 cursor = self.db.conn.cursor()
@@ -462,7 +482,7 @@ class MigrationTool:
                                 print(f"      Downloading message attachment asset: {attachment.filename}...")
                                 file_bytes = await self.discord_client.download_attachment(attachment.url)
                                 if file_bytes:
-                                    attachments_payload.append((attachment.filename, file_bytes))
+                                    attachments_payload.append({"filename": attachment.filename, "data": file_bytes})
                                     stats["attachments_migrated"] += 1
                                     print(
                                         f"      Successfully buffered {attachment.filename} ({len(file_bytes)} bytes).")
@@ -470,17 +490,15 @@ class MigrationTool:
                                 print(f"      Warning: Skipped file download target {attachment.filename}: {att_err}")
                                 stats["errors"] += 1
 
-                        # Resolve deep text formatting nodes (Mentions, Custom Emojis, Cross-links)
+                        # Resolve text formatting nodes
                         author_name = discord_msg.author.display_name
-                        author_avatar_url = str(
-                            discord_msg.author.display_avatar.url) if discord_msg.author.display_avatar else None
 
                         # Intercept and process raw Markdown entities via utility parser
                         processed_content = discord_msg.content or ""
                         if processed_content and hasattr(self, "resolve_custom_markdown_links"):
                             processed_content = self.resolve_custom_markdown_links(processed_content, discord_msg.guild)
 
-                        # Generate fallback wrappers for empty binary/attachment context structures
+                        # Generate fallback wrappers for empty context structures
                         if not processed_content and attachments_payload:
                             clean_content = f"**[{author_name}]** sent an attachment."
                         else:
@@ -488,22 +506,42 @@ class MigrationTool:
 
                         # Forward prepared payload frame directly to target wrapper
                         print(f"      Forwarding content vector payload to Fluxer instance...")
-                        new_fluxer_id = None
+                        new_fluxer_msg = None
                         try:
-                            new_fluxer_id = await self.fluxer_client.send_message(
+                            new_fluxer_msg = await self.fluxer_client.send_message(
                                 channel_id=fluxer_channel_id,
                                 content=clean_content,
                                 attachments=attachments_payload,
-                                username=author_name,
-                                avatar_url=author_avatar_url
+                                author_name=author_name
                             )
                         except Exception as send_err:
                             print(f"      Error: API rejected target message translation frame: {send_err}")
                             stats["errors"] += 1
 
+                        # Extract ID from returned message response object if available
+                        new_fluxer_id = None
+                        if new_fluxer_msg and isinstance(new_fluxer_msg, dict):
+                            new_fluxer_id = str(new_fluxer_msg.get("id"))
+
                         if new_fluxer_id:
-                            # Commit transaction layout keys to database index row
-                            self.db.save_message_mapping(discord_msg.id, new_fluxer_id)
+                            # Direct SQLite write fallback for message mapping saving
+                            try:
+                                cursor = self.db.conn.cursor()
+                                cursor.execute(
+                                    "INSERT OR REPLACE INTO message_mappings (discord_id, fluxer_id) VALUES (?, ?)",
+                                    (str(discord_msg.id), str(new_fluxer_id))
+                                )
+                                self.db.conn.commit()
+                            except Exception:
+                                try:
+                                    cursor.execute(
+                                        "INSERT OR REPLACE INTO message_links (source_id, destination_id) VALUES (?, ?)",
+                                        (str(discord_msg.id), str(new_fluxer_id))
+                                    )
+                                    self.db.conn.commit()
+                                except Exception:
+                                    pass
+
                             stats["messages_migrated"] += 1
 
                             if not stats["first_message_url"]:
@@ -556,7 +594,7 @@ class MigrationTool:
                                     f"      Warning: Nested step processing error on thread context {thread_node.id}: {th_err}")
                                 stats["errors"] += 1
 
-                        # Save checkpoints incrementally via direct atomic SQL transaction writes
+                        # Save checkpoints incrementally using direct SQLite cursor
                         current_after_obj = discord.Object(id=discord_msg.id)
                         try:
                             cursor = self.db.conn.cursor()
@@ -592,16 +630,31 @@ class MigrationTool:
                 await progress_callback(stats)
 
             try:
-                # FIXED: Check endpoint layout explicitly and isolate lookups to absorb missing client functions safely
                 if hasattr(self.fluxer_client, "get_channel_pinned_messages"):
                     fluxer_pinned_ids = await self.fluxer_client.get_channel_pinned_messages(fluxer_channel_id)
                     for d_id in discord_pinned_ids:
-                        f_id = self.db.get_fluxer_message_id(int(d_id))
+                        f_id = None
+                        try:
+                            cursor = self.db.conn.cursor()
+                            cursor.execute("SELECT fluxer_id FROM message_mappings WHERE discord_id = ?", (str(d_id),))
+                            row = cursor.fetchone()
+                            if row:
+                                f_id = row['fluxer_id']
+                        except Exception:
+                            pass
                         if f_id and f_id not in fluxer_pinned_ids:
                             await self.fluxer_client.pin_message(fluxer_channel_id, f_id)
                 else:
                     for d_id in discord_pinned_ids:
-                        f_id = self.db.get_fluxer_message_id(int(d_id))
+                        f_id = None
+                        try:
+                            cursor = self.db.conn.cursor()
+                            cursor.execute("SELECT fluxer_id FROM message_mappings WHERE discord_id = ?", (str(d_id),))
+                            row = cursor.fetchone()
+                            if row:
+                                f_id = row['fluxer_id']
+                        except Exception:
+                            pass
                         if f_id:
                             await self.fluxer_client.pin_message(fluxer_channel_id, f_id)
             except Exception as pin_err:
@@ -631,7 +684,12 @@ class MigrationTool:
                 for discord_id, fluxer_id in messages_to_delete_from_fluxer:
                     success = await self.fluxer_client.delete_message(fluxer_channel_id, fluxer_id)
                     if success:
-                        self.db.delete_message_mapping(discord_id)
+                        try:
+                            cursor = self.db.conn.cursor()
+                            cursor.execute("DELETE FROM message_mappings WHERE discord_id = ?", (str(discord_id),))
+                            self.db.conn.commit()
+                        except Exception:
+                            pass
                         print(f"    Successfully deleted stale Fluxer message {fluxer_id}.")
                     await asyncio.sleep(0.1)
             except Exception as purge_err:

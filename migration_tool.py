@@ -486,6 +486,64 @@ class MigrationTool:
         if progress_callback:
             await progress_callback(stats)
 
+    async def _migrate_single_message(self, fluxer_channel_id: str, discord_msg: Any) -> Any:
+        """
+        Migrates a single message from Discord to Fluxer, preserving reply-link states.
+        """
+        print(f"  Migrating message {discord_msg.id} from {discord_msg.author.username}")
+
+        # 1. Process and format attachments
+        attachments_payload = []
+        if discord_msg.attachments:
+            for att in discord_msg.attachments:
+                attachments_payload.append({
+                    "id": str(att.id),
+                    "filename": att.filename,
+                    "url": att.url,
+                    "size": att.size
+                })
+
+        # 2. Extract author metadata
+        author_name = discord_msg.author.username
+        clean_content = discord_msg.content or ""
+
+        # 3. Construct base configuration arguments
+        kwargs = {
+            "channel_id": fluxer_channel_id,
+            "content": clean_content,
+            "attachments": attachments_payload,
+            "author_name": author_name
+        }
+
+        # 4. Reply-Link Preservation Logic
+        if discord_msg.reference and discord_msg.reference.message_id:
+            discord_reply_id = str(discord_msg.reference.message_id)
+            fluxer_reply_id = self.context.get_fluxer_message_id(discord_reply_id)
+
+            if fluxer_reply_id:
+                kwargs["message_reference"] = {"message_id": int(fluxer_reply_id)}
+                print(f"  [Reply] Linked to Fluxer parent message ID: {fluxer_reply_id}")
+            else:
+                print(
+                    f"  [Reply] Referenced Discord message {discord_reply_id} not migrated or found in state cache, skipping link structure.")
+
+        # 5. Send the compiled payload through the context wrapper
+        try:
+            new_fluxer_msg = await self.context.fluxer.send_message(**kwargs)
+
+            # 6. Store and cache the synchronized mapping
+            if new_fluxer_msg and hasattr(new_fluxer_msg, 'id'):
+                self.context.set_message_mapping(
+                    discord_id=str(discord_msg.id),
+                    fluxer_id=str(new_fluxer_msg.id)
+                )
+                return new_fluxer_msg
+
+        except Exception as e:
+            print(f"  [Error] Failed to write single message context sequence: {e}")
+            traceback.print_exc()
+        return None
+
     async def migrate_messages_has_more(self, current_after_obj: Object | None, cursor,
                                         discord_channel: VoiceChannel | StageChannel | ForumChannel | TextChannel | CategoryChannel | Thread | PrivateChannel | None,
                                         discord_channel_id, discord_pinned_ids: list[Any] | list[str],

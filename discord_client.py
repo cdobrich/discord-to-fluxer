@@ -416,3 +416,8 @@ class DiscordClient:
         except Exception as e:
             print(f"Discord: Error fetching message {message_id} in channel {channel_id}: {e}")
             return None
+
+    async def get_pins(self, channel_id: int):
+        """Fetches pinned messages for a given channel."""
+        channel = await self.client.fetch_channel(channel_id)
+        return await channel.pins()

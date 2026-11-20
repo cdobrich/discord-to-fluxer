@@ -1,6 +1,6 @@
 # Discord-to-Fluxer
 
-This project is in ARCHIVE mode. All active development has been forked and switched to [https://github.com/cdobrich/arc-sync-engine].
+This project is in ARCHIVE mode. All active development has been forked and switched to [Arc-Sync-Engine](https://github.com/cdobrich/arc-sync-engine).
 
 Migrate from Discord Chat to [Fluxer](https://github.com/fluxerapp/fluxer) chat.
 
